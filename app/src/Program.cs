@@ -2256,6 +2256,7 @@ namespace RenPyDocs
                             Log("app-update: startup");
                             bool checkedOk = await AppUpdateUI.CheckAndShowAsync(
                                 this, false, settings.AppUpdateUrl);
+                            if (AppUpdateInstaller.RestartPending) return;
                             // a failed lookup (offline / no release yet) must not
                             // consume today's one attempt: retry on the next start
                             if (checkedOk && settings.AppUpdateDaily)

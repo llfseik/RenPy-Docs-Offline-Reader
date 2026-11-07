@@ -67,6 +67,8 @@ $refs = @(
   "/r:System.Drawing.dll",
   "/r:System.Windows.Forms.dll",
   "/r:System.Net.Http.dll",
+  "/r:System.IO.Compression.dll",
+  "/r:System.IO.Compression.FileSystem.dll",
   "/r:$app\Microsoft.Web.WebView2.Core.dll",
   "/r:$app\Microsoft.Web.WebView2.WinForms.dll"
 )

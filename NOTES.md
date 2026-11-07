@@ -263,7 +263,7 @@ renpy文档/
   2. **文档更新检查** — 勾选「启动时检查文档更新」；下面还有「每天最多检查一次」（`doc-update-daily`，**默认勾选**），勾上后启动检查会在 `%LOCALAPPDATA%\RenPyDocs\doc-check.txt` 里记下当天日期（`yyyy-MM-dd`，本地时间），同一天再启动就跳过（日志 `check: startup skipped (already checked today)`），手动检查不受限制
   3. **关闭清除标签** — 勾选「关闭后清除所有标签页」
   4. **搜索记录数量** — 横向 `TrackBar`，0–10，右侧数字实时跟着滑块走；控制每个文档最多保留几条搜索历史，0 表示不保留（`search-history-max`）
-  5. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/llfseik/RenPy-Docs-Offline-Reader`，留空即用项目默认仓库）+ 勾选「启动时检查软件更新」（`app-update`）+ 勾选「每天最多检查一次」（`app-update-daily`，两项默认开启）；启动时查询 GitHub Release
+  5. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/llfseik/RenPy-Docs-Offline-Reader`，留空即用项目默认仓库）+ 勾选「启动时检查软件更新」（`app-update`）+ 勾选「每天最多检查一次」（`app-update-daily`，两项默认开启）；启动时查询 GitHub Release，有新版本时确认后下载合并
   底部两个 124×44 的按钮：**取消**（左，`DialogResult.Cancel`）/ **保存**（右，`DialogResult.OK`）。控件的值只在点「保存」时由 `Collect()` 收进 `Result`；取消 / Esc / 关闭窗口都不写文件、不改任何状态
 - 存储：`%LOCALAPPDATA%\RenPyDocs\settings.txt`，八行 `key=value`：`language` / `doc-update` / `doc-update-daily` / `search-history-max` / `app-update` / `app-update-daily` / `app-update-url` / `clear-tabs`。`AppSettings.Load()` 对缺文件、缺键、坏值一律回默认（语言 `zh-CN`、文档更新开、每天一次开、搜索历史 5 条、软件更新开、软件更新每天一次开、清标签关）；旧文件没有 `app-update-daily` 时按新默认迁移为两项都开
 - 行为（保存后生效）：
@@ -274,7 +274,7 @@ renpy文档/
   - 仍然保持原文的：文档正文、左侧目录、页面标题里的站名（`— Ren'Py 中文文档`）、搜索页的常见主题 chips（它们是中文文档里的检索词）、搜索结果里的章节名和 API 类型标签（索引内容）。底部免责声明四段也进了 `UI_TEXT`（`disc.1`…`disc.4`），由 FAB 脚本在载入时整块重建
   - 文档更新：`StartupChecks()` 先检查软件更新，再调用 `AutoCheckDocumentUpdates()` 按 `doc-update` 检查**当前打开的文档**——`zh-CN` 走 `CheckForUpdates(true)`，其余走 `CheckDocUpdate(id, true)`；和页面上的「检查更新」完全同一条路径：先弹 `BusyForm` 进度窗，检查完弹「当前已是最新版本」/「无需更新」（带「校验完整性」），有新版则弹更新确认框
   - 搜索历史：`PageSettingsScript()` 把 `window.__rpUiLang` 和 `window.__rpSearchHistoryMax` 一起注入；页面 `load/save/remember` 都按 `MAX` 截断，`MAX<=0` 时不再记录、并删掉存储键。保存设置时 `TrimSearchHistoryAsync()` 先遍历 `localStorage` 里所有 `rp-search-history*` 键裁到新上限，再 `Reload()` 当前页（页面载入时也会再裁一次自己的键）
-  - 软件更新：`StartupChecks()` 在启动 0.8 秒后先查 `app-update`，查完（有更新时等弹窗关闭）才走文档检查，所以两者都有更新时软件更新弹窗在前；`app-update-daily` 打开时用 `%LOCALAPPDATA%\RenPyDocs\app-check.txt` 记当天日期（`yyyy-MM-dd`），同一天再启动就跳过（日志 `app-update: startup skipped (already checked today)`），只有检查成功才记日期，离线/失败下次启动会重试。`AppUpdater` 把 GitHub 仓库地址转换成 `api.github.com/repos/<owner>/<repo>/releases/latest`，也支持返回 `{"version":"1.0.1","url":"…"}` 的自定义清单；比较 `AppUpdate.cs` 里的 `CurrentVersion`（1.0.0），只提示并打开下载页面，不自动安装；无更新/无 Release 时启动过程不弹窗
+  - 软件更新：`StartupChecks()` 在启动 0.8 秒后先查 `app-update`，查完（有更新时等弹窗关闭）才走文档检查，所以两者都有更新时软件更新弹窗在前；`app-update-daily` 打开时用 `%LOCALAPPDATA%\RenPyDocs\app-check.txt` 记当天日期（`yyyy-MM-dd`），同一天再启动就跳过（日志 `app-update: startup skipped (already checked today)`），只有检查成功才记日期，离线/失败下次启动会重试。`AppUpdater` 把 GitHub 仓库地址转换成 `api.github.com/repos/<owner>/<repo>/releases/latest`，也支持返回 `{"version":"1.0.1","url":"…","download_url":"…zip"}` 的自定义清单；比较 `AppUpdate.cs` 里的 `CurrentVersion`（1.0.1）。发现新版后确认「立即更新」：`AppUpdateInstaller` 下载 Release 里的 ZIP（优先带 renpy/offline/windows 的资产），解压后写一个 `apply-update.ps1`，等本进程退出后把文件合并进安装目录（**跳过 `site\docs.json`**，保留本地文档目录和版本），再重启 `RenPyDocs.exe`；合并失败写 `%TEMP%\RenPyDocs-update.log`。没有可下载资产时才退回打开下载页面；无更新/无 Release 时启动过程不弹窗
   - 清标签：`clear-tabs` 打开时，`OnFormClosing` 的第二次收尾（`SaveTabs()` 之后）调 `ClearSavedTabs()` 删掉全部 `tabs-*.txt`；`doc.txt` 保留，所以下次启动 `LoadStartupTabs()` 找不到列表，只开**当前文档的首页**
 - 语言覆盖范围：`Program.cs` 的弹窗/按钮/提示，以及页面侧 `UI_TEXT` 字典覆盖的悬浮按钮、切换面板、搜索页 / 收藏页 / 选择页和底部免责声明；文档正文、目录、文档标签标题保持原文
 - 旧「测试」入口连同 `#rp-test-panel`、`TESTS` 数组、`rp-open-tab` 的页面侧调用一起删掉了（`rp-open-tab` 仍留给搜索命中开标签用）
@@ -494,8 +494,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app\tools\build.ps1
   ```
   csc /target:exe /platform:x64 /main:RenPyDocs.SelfTest /out:_selftest.exe ^
       /r:System.Windows.Forms.dll /r:System.Drawing.dll              ^
+      /r:System.Net.Http.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
       /r:Microsoft.Web.WebView2.Core.dll /r:Microsoft.Web.WebView2.WinForms.dll ^
-      src\Program.cs src\TabStrip.cs src\Updater.cs src\Integrity.cs tools\SelfTest.cs
+      src\Program.cs src\TabStrip.cs src\Updater.cs src\Integrity.cs src\AppUpdate.cs tools\SelfTest.cs
   _selftest.exe site selftest.txt
   ```
   （少了 WebView2 那两个 `/r:` 会报 CS0234：`Microsoft.Web.WebView2` 命名空间不存在）

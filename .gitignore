@@ -1,0 +1,15 @@
+# generated documentation mirror (download from a release, or fetch with the updater)
+app/site/
+_test-backup/
+
+# embedded Python runtime (shipped as a release asset)
+app/updater/python/
+app/updater/__pycache__/
+*.pyc
+
+# build output, shortcuts and local logs
+app/RenPyDocs.exe
+app/_selftest.exe
+app/selftest.txt
+app/*.lnk
+*.log
