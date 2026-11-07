@@ -1,0 +1,231 @@
+<section id="rp-picker">
+  <h1 class="rp-pick-title">请选择文档</h1>
+  <ul id="rp-pick-list" class="rp-pick-list" aria-label="文档列表"></ul>
+</section>
+
+<style>
+/* 空白页：没有下载任何文档时显示。左侧目录、面包屑、页脚、返回条全部去掉，
+   只留屏幕正中一块「请选择文档」+ 文档列表 */
+.wy-nav-side,.wy-nav-top,.rst-footer-buttons,.rst-content>div[role="navigation"],
+.rp-disclaimer,footer,#rp-navbar,#rp-docs-fab,#rp-docs-panel,
+#rp-search-fab,#rp-favorites-fab,#rp-update-fab,#rp-settings-fab{display:none!important}
+.wy-nav-content-wrap{margin-left:0;background:transparent}
+.wy-nav-content{max-width:none;padding:0}
+.rst-content{margin:0;padding:0}
+/* 主题在 li / li 的子元素 / ul 上有一堆 margin，这里全部清掉，盒子按自己的尺寸来 */
+.rst-content #main.document{margin:0;padding:0;max-width:none}
+.rst-content div[itemprop="articleBody"]{box-sizing:border-box;min-height:100vh;margin:0;
+padding:32px 24px;display:flex;align-items:center;justify-content:center}
+#rp-picker{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center}
+#rp-picker .rp-pick-title{margin:0 0 26px;font-size:26px;font-weight:600;color:#33414e;
+letter-spacing:.04em;text-align:center;line-height:1.3}
+#rp-picker .rp-pick-list{list-style:none;margin:0;padding:0;width:100%;
+display:flex;flex-direction:column;gap:12px}
+#rp-picker .rp-pick-list>li{list-style:none;margin:0}
+#rp-picker .rp-pick-item{display:flex;align-items:center;gap:12px;padding:14px 16px;
+border:1px solid #dfe5ec;border-radius:10px;background:#fff;cursor:pointer;
+font-size:17px;color:#2c3945;line-height:1.3;
+transition:border-color .15s,box-shadow .15s,background .15s}
+#rp-picker .rp-pick-item>*{margin:0}
+#rp-picker .rp-pick-item:hover{border-color:#9cc7e0;box-shadow:0 4px 14px rgba(41,128,185,.14)}
+#rp-picker .rp-pick-item:active{background:#f6fbfe}
+#rp-picker .rp-pick-item:focus-visible{outline:2px solid #9cc7e0;outline-offset:2px}
+#rp-picker .rp-pick-ico{flex:0 0 auto;width:24px;height:24px;color:#2980b9;
+display:flex;align-items:center;justify-content:center}
+#rp-picker .rp-pick-ico svg{width:24px;height:24px;display:block;fill:none;stroke:currentColor;
+stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
+#rp-picker .rp-pick-name{flex:1 1 auto;min-width:0;overflow:hidden;
+text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#rp-picker .rp-pick-go{flex:0 0 auto;width:18px;height:18px;color:#b6c0ca;display:block;fill:none;
+stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+transition:color .15s ease-in-out}
+#rp-picker .rp-pick-item:hover .rp-pick-go{color:#2980b9}
+#rp-picker .rp-pick-empty{margin:0;color:#8a949e;font-size:16px}
+html[data-theme="dark"] #rp-picker .rp-pick-title{color:#dbe3ea}
+html[data-theme="dark"] #rp-picker .rp-pick-item{background:#1b232c;border-color:#333d49;color:#dbe3ea}
+html[data-theme="dark"] #rp-picker .rp-pick-item:hover{border-color:#4f7f9e;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+html[data-theme="dark"] #rp-picker .rp-pick-item:active{background:#202b36}
+html[data-theme="dark"] #rp-picker .rp-pick-item:focus-visible{outline-color:#4f7f9e}
+html[data-theme="dark"] #rp-picker .rp-pick-ico{color:#8ec8ea}
+html[data-theme="dark"] #rp-picker .rp-pick-go{color:#5d6b7a}
+html[data-theme="dark"] #rp-picker .rp-pick-item:hover .rp-pick-go{color:#8ec8ea}
+html[data-theme="dark"] #rp-picker .rp-pick-empty{color:#93a0ad}
+#rp-picker .rp-pick-tail{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;min-width:1.5em}
+#rp-picker .rp-pick-dl{display:flex;align-items:center;justify-content:center;width:1.6em;height:1.6em;
+border-radius:6px;color:#2980b9;cursor:pointer;transition:background .12s,color .12s}
+#rp-picker .rp-pick-dl:hover{background:#e6f2fa;color:#1f6a99}
+#rp-picker .rp-pick-dl:focus-visible{outline:2px solid #9cc7e0;outline-offset:1px}
+#rp-picker .rp-pick-dl svg{width:1.35em;height:1.35em;display:block;fill:none;stroke:currentColor;
+stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#rp-picker .rp-pick-busy{font-size:.82em;color:#8a949e;white-space:nowrap}
+html[data-theme="dark"] #rp-picker .rp-pick-dl{color:#8ec8ea}
+html[data-theme="dark"] #rp-picker .rp-pick-dl:hover{background:#243040;color:#bfe2f5}
+html[data-theme="dark"] #rp-picker .rp-pick-dl:focus-visible{outline-color:#4f7f9e}
+html[data-theme="dark"] #rp-picker .rp-pick-busy{color:#93a0ad}
+#rp-picker .rp-doc-ring{position:relative;display:flex;align-items:center;justify-content:center;
+width:2.3em;height:2.3em;cursor:pointer;border-radius:50%}
+#rp-picker .rp-doc-ring .rp-ring{width:2.3em;height:2.3em;display:block}
+#rp-picker .rp-ring-track{fill:none;stroke:#dbe3ea;stroke-width:2.4}
+#rp-picker .rp-ring-fill{fill:none;stroke:#2980b9;stroke-width:2.4;stroke-linecap:round;
+transition:stroke-dashoffset .3s linear}
+#rp-picker .rp-ring-glyph{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;
+align-items:center;justify-content:center;opacity:0;transition:opacity .12s;
+color:#2980b9;pointer-events:none}
+#rp-picker .rp-ring-glyph svg{width:1em;height:1em;display:block;fill:currentColor;stroke:none}
+#rp-picker .rp-doc-ring:hover .rp-glyph-pause{opacity:1}
+#rp-picker .rp-doc-ring.paused .rp-glyph-play{opacity:1}
+#rp-picker .rp-doc-ring.paused .rp-glyph-pause{opacity:0}
+#rp-picker .rp-doc-ring.paused .rp-ring-fill{stroke:#8a949e}
+#rp-picker .rp-doc-ring:focus-visible{outline:2px solid #9cc7e0;outline-offset:1px}
+html[data-theme="dark"] #rp-picker .rp-ring-track{stroke:#3a4552}
+html[data-theme="dark"] #rp-picker .rp-ring-fill{stroke:#8ec8ea}
+html[data-theme="dark"] #rp-picker .rp-ring-glyph{color:#8ec8ea}
+html[data-theme="dark"] #rp-picker .rp-doc-ring.paused .rp-ring-fill{stroke:#93a0ad}
+html[data-theme="dark"] #rp-picker .rp-doc-ring:focus-visible{outline-color:#4f7f9e}
+#rp-picker .rp-pick-item.nodl .rp-pick-name{color:#8a949e}
+html[data-theme="dark"] #rp-picker .rp-pick-item.nodl .rp-pick-name{color:#7d8894}
+</style>
+
+<script>(function(){
+function init(){
+var list=document.getElementById('rp-pick-list');
+if(!list)return;
+var docs=window.RP_DOCS||[];
+var GONE='rp-docs-gone';
+function readGone(){
+try{var a=JSON.parse(localStorage.getItem(GONE)||'[]');
+return Object.prototype.toString.call(a)==='[object Array]'?a:[];}catch(e){return[];}}
+// 选中一份文档 = 把它从“已删除”名单里拿掉，然后打开它
+function restore(id){
+try{var a=readGone(),b=[];
+for(var i=0;i<a.length;i++)if(a[i]!==id)b.push(a[i]);
+localStorage.setItem(GONE,JSON.stringify(b));}catch(e){}}
+var DL_ICON='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<path d="M12 4v10.4M7.8 10.2L12 14.4l4.2-4.2M5.4 19.4h13.2"/></svg>';
+var polls={};
+function loadCatalog(){
+return fetch('../docs.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():[];})
+.catch(function(){return [];});}
+function applyCatalog(a){
+if(!a||!a.length)return false;
+for(var i=0;i<docs.length;i++)for(var j=0;j<a.length;j++)
+if(a[j].id===docs[i].id){docs[i].dl=!!a[j].downloaded;docs[i].version=a[j].version||'';}
+return true;}
+var RING_C=50.27;
+var PAUSE_ICON='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<path d="M6.0 5.2h3.4v13.6H6.0zM14.6 5.2h3.4v13.6h-3.4z"/></svg>';
+var PLAY_ICON='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<path d="M8.2 5.2l11.6 6.8-11.6 6.8z"/></svg>';
+function ring(li,d){
+var w=document.createElement('span');
+w.className='rp-doc-ring'+(d.paused?' paused':'');
+w.setAttribute('role','button');w.setAttribute('tabindex','0');
+w.title=d.paused?rpT('docs.resume'):rpT('docs.pause');
+w.innerHTML='<svg class="rp-ring" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<circle class="rp-ring-track" cx="12" cy="12" r="8"/>'
++'<circle class="rp-ring-fill" cx="12" cy="12" r="8" stroke-dasharray="'+RING_C+'"'
++' stroke-dashoffset="'+RING_C+'" transform="rotate(-90 12 12)"/></svg>'
++'<span class="rp-ring-glyph rp-glyph-pause">'+PAUSE_ICON+'</span>'
++'<span class="rp-ring-glyph rp-glyph-play">'+PLAY_ICON+'</span>';
+function toggle(e){
+e.preventDefault();e.stopPropagation();
+if(!(window.chrome&&window.chrome.webview))return;
+window.chrome.webview.postMessage((d.paused?'rp-doc-resume\n':'rp-doc-pause\n')+d.id);
+d.paused=!d.paused;paint(li,d);}
+w.addEventListener('click',toggle);
+w.addEventListener('keydown',function(e){
+if(e.key==='Enter'||e.key===' '){toggle(e);}});
+updateRing(w,d);
+return w;}
+function updateRing(w,d){
+var f=w.querySelector('.rp-ring-fill');
+if(f){
+var pct=Math.max(0,Math.min(100,d.pct||0));
+f.setAttribute('stroke-dashoffset',(RING_C*(1-pct/100)).toFixed(1));}
+var cls='rp-doc-ring'+(d.paused?' paused':'');
+if(w.className!==cls)w.className=cls;
+var t=d.paused?rpT('docs.resume'):rpT('docs.pause');
+if(w.title!==t)w.title=t;}
+function paint(li,d){
+var tail=li.querySelector('.rp-pick-tail');if(!tail)return;
+li.className='rp-pick-item'+(d.dl?'':' nodl');
+if(d.dl){
+if(tail.querySelector('.rp-pick-go'))return;
+tail.innerHTML='';
+var go=document.createElement('span');
+go.innerHTML='<svg class="rp-pick-go" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<path d="M9.5 5.5l7 6.5-7 6.5"/></svg>';
+tail.appendChild(go.firstChild);return;}
+if(d.busy){
+var w=tail.querySelector('.rp-doc-ring');
+if(w){updateRing(w,d);}
+else{tail.innerHTML='';tail.appendChild(ring(li,d));}
+return;}
+if(tail.querySelector('.rp-pick-dl'))return;
+tail.innerHTML='';
+var btn=document.createElement('span');
+btn.className='rp-pick-dl';btn.setAttribute('role','button');btn.setAttribute('tabindex','0');
+btn.title=rpT('docs.download');btn.innerHTML=DL_ICON;
+btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();startDownload(li,d);});
+btn.addEventListener('keydown',function(e){
+if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();startDownload(li,d);}});
+tail.appendChild(btn);}
+function startDownload(li,d){
+if(d.busy||d.dl)return;
+if(!(window.chrome&&window.chrome.webview)){
+window.open('https://www.renpy.org/doc/html/','_blank');return;}
+d.busy=true;d.pct=0;d.paused=false;paint(li,d);
+window.chrome.webview.postMessage('rp-doc-download\n'+d.id);}
+function pickById(id){
+for(var i=0;i<docs.length;i++)if(docs[i].id===id)return docs[i];
+return null;}
+function pickRow(id){
+var rows=list.querySelectorAll('.rp-pick-item');
+for(var i=0;i<rows.length;i++)if(rows[i].getAttribute('data-id')===id)return rows[i];
+return null;}
+window.__rpDocProgress=function(id,pct,paused){
+var d=pickById(id),li=pickRow(id);if(!d||!li)return;
+d.busy=true;d.pct=pct;d.paused=!!paused;paint(li,d);};
+window.__rpDocReady=function(id){
+var d=pickById(id),li=pickRow(id);if(!d)return;
+d.dl=true;d.busy=false;d.paused=false;if(li)paint(li,d);};
+window.__rpDocFailed=function(id){
+var d=pickById(id),li=pickRow(id);if(!d)return;
+d.busy=false;d.paused=false;d.pct=0;if(li)paint(li,d);};
+function row(d){
+var li=document.createElement('li');
+li.className='rp-pick-item';li.setAttribute('role','button');li.setAttribute('tabindex','0');
+li.setAttribute('data-id',d.id);
+li.setAttribute('title',d.name);
+var ic=document.createElement('span');ic.className='rp-pick-ico';
+ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
++'<path d="M3.6 5.5c2.9-1 5.6-.7 8.4.9v12.8c-2.8-1.6-5.5-1.9-8.4-.9z"/>'
++'<path d="M20.4 5.5c-2.9-1-5.6-.7-8.4.9v12.8c2.8-1.6 5.5-1.9 8.4-.9z"/></svg>';
+var nm=document.createElement('span');nm.className='rp-pick-name';nm.textContent=d.name;
+var tail=document.createElement('span');tail.className='rp-pick-tail';
+li.appendChild(ic);li.appendChild(nm);li.appendChild(tail);
+function open(){
+if(!d.dl){startDownload(li,d);return;}
+restore(d.id);
+// 就是当前这份：直接回它的首页（宿主那边“切到同一个文档”是空操作）
+if(d.id===(window.RP_DOC_ID||'')){location.href='index.html';return;}
+// 桌面版交给宿主切文档（会先提示数据不互通并换掉标签页），浏览器里直接跳
+if(window.chrome&&window.chrome.webview){
+window.chrome.webview.postMessage('rp-switch-doc\n'+d.id);}
+else{location.href=d.home||'index.html';}}
+li.addEventListener('click',open);
+li.addEventListener('keydown',function(e){
+if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+paint(li,d);
+return li;}
+if(!docs.length){
+var p=document.createElement('p');p.className='rp-pick-empty';
+p.textContent=rpT('pick.empty');list.appendChild(p);return;}
+for(var i=0;i<docs.length;i++)list.appendChild(row(docs[i]));
+loadCatalog().then(function(a){
+if(!applyCatalog(a))return;
+var rows=list.querySelectorAll('.rp-pick-item');
+for(var k=0;k<rows.length;k++)paint(rows[k],docs[k]);});}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+else init();
+})();</script>

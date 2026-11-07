@@ -1,0 +1,663 @@
+<section id="rp-search">
+  <h1>搜索</h1>
+  <div class="rp-mobile-search">
+    <input id="rp-mobile-q" type="search" placeholder="搜索文档…" aria-label="搜索文档" autocomplete="off">
+  </div>
+  <p class="rp-hint">在搜索框输入关键词，结果会即时显示在这里。多个关键词用空格分隔，表示同时包含。</p>
+  <div id="rp-summary" class="rp-summary" aria-live="polite"></div>
+    <ul id="rp-results" class="rp-results"></ul>
+  <div id="rp-empty">
+    <p class="rp-empty-tip">还没有搜索内容。试试这些常见主题：</p>
+    <p class="rp-chips" id="rp-chips"></p>
+    <p class="rp-stats" id="rp-stats"></p>
+  </div>
+</section>
+
+<style>
+#rp-search h1 { margin: .1em 0 .35em; }
+.rp-mobile-search { display: none; }
+@media (max-width: 900px) {
+  .rp-mobile-search { display: block; margin: 0 0 1em; }
+  .rp-mobile-search input {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 1em;
+    padding: .55em .7em; border: 1px solid #cfd6dd; border-radius: 4px;
+  }
+  .rp-hint { display: none; }
+}
+html[data-theme="dark"] .rp-mobile-search input { background: #1d242c; border-color: #3a4552; color: #e6edf3; }
+.rp-hint { color: #6a737d; font-size: .92em; margin: 0 0 1.3em; }
+.rp-summary { color: #4a5560; font-size: .95em; margin: 0 0 .2em; }
+
+.rp-results { list-style: none; margin: 0; padding: 0; }
+#rp-search ul.rp-results { margin-left: 0; padding-left: 0; list-style: none; }
+#rp-search ul.rp-results > li { list-style: none; margin-left: 0; }
+
+/* results are grouped by document: the document is the 大类, its hits are
+   the 小类 listed underneath, so one category is always read top to bottom */
+.rp-group { position: relative; padding: .9em 0 .7em; border-top: 1px solid #e8eaed; }
+.rp-group:first-child { border-top: none; padding-top: .15em; }
+/* the collapse arrow sits in the left gutter and only shows up when the
+   pointer is near the group; this invisible strip makes "near" reachable */
+.rp-group::before {
+  content: ""; position: absolute; left: -1.5em; top: 0; bottom: 0; width: 1.5em;
+}
+/* the heading row is a flex row, so the arrow can be centred on the 大类
+   name exactly (top:50% + translateY) instead of guessing at the baseline */
+.rp-head { position: relative; display: flex; align-items: center; }
+.rp-toggle {
+  position: absolute; left: -1.5em; top: calc(50% - .09em); z-index: 1;
+  transform: translateY(-50%);
+  width: 1.5em; height: 1.5em; padding: 0; margin: 0; border: 0;
+  background: none; color: #8e98a2; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .18s, color .18s;
+}
+.rp-toggle::before { content: none; }
+.rp-toggle svg {
+  width: 16px; height: 9px; display: block; overflow: visible;
+  pointer-events: none;   /* clicks land on the button, not the glyph */
+  transform-origin: 50% 50%;
+  transition: transform .24s ease;
+}
+.rp-toggle svg path {
+  fill: currentColor; stroke: currentColor;
+  stroke-width: 3; stroke-linejoin: round; stroke-linecap: round;
+}
+.rp-group:hover .rp-toggle, .rp-toggle:hover, .rp-toggle:focus-visible {
+  opacity: 1;
+}
+.rp-toggle:hover { color: #2980b9; }
+/* the arrow fades back out once the pointer leaves, collapsed or not */
+.rp-group.collapsed .rp-toggle svg { transform: rotate(-90deg); }
+.rp-doc {
+  display: inline-block; font-size: 1.34em; font-weight: 600;
+  line-height: 1.35; color: #2980b9;
+}
+.rp-doc:hover { color: #3091d1; }
+.rp-doc:visited { color: #2980b9; }
+/* a document with a single hit needs no heading of its own: the same blue
+   name leads its one line */
+.rp-doc-inline { margin-right: 0; }
+#rp-search ul.rp-results > li.rp-single { padding: .55em 0; border-top: 1px solid #e8eaed; }
+#rp-search ul.rp-results > li.rp-single:first-child { border-top: none; padding-top: .15em; }
+.rp-items { margin: 0; padding: 0 0 0 .95em; border-left: 2px solid #eef1f4; overflow: hidden; min-height: 0; }
+#rp-search ul.rp-items { list-style: none; margin: 0; padding: 0 0 0 .95em; }
+#rp-search ul.rp-items > li { list-style: none; margin: 0; padding: .34em 0; }
+#rp-search ul.rp-items > li.sel { background: #f2f7fb; box-shadow: inset 3px 0 0 #2980b9; }
+/* folding: 1fr -> 0fr animates the real content height, no magic numbers */
+.rp-fold {
+  display: grid; grid-template-rows: 1fr; margin-top: .2em;
+  transition: grid-template-rows .24s ease, margin-top .24s ease;
+}
+.rp-group.collapsed .rp-fold { grid-template-rows: 0fr; margin-top: 0; }
+
+/* one hit: the section path inside the document, last segment is the term */
+.rp-path { display: inline; line-height: 1.6; }
+.rp-crumb { color: #7c8792; font-size: .86em; }
+.rp-sep { color: #b6bfc8; font-size: .78em; padding: 0 .4em; }
+.rp-leaf { color: #2c3945; font-size: 1.06em; font-weight: 600; }
+.rp-leaf.rp-mono {
+  font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+  font-size: 1.02em;
+}
+.rp-path:hover .rp-leaf { color: #2980b9; }
+.rp-kind {
+  display: inline-block; margin-left: .55em; padding: 0 .42em; font-size: .72em;
+  line-height: 1.7; color: #6a737d; background: #f1f4f7;
+  border: 1px solid #e3e8ed; border-radius: 3px; vertical-align: 2px;
+}
+.rp-context { margin: .3em 0 0; color: #55606a; font-size: .93em; line-height: 1.62; }
+.rp-code {
+  margin: .45em 0 0; padding: .55em .75em; background: #f6f8fa;
+  border: 1px solid #e6e9ed; border-left: 3px solid #cbd5df; border-radius: 4px;
+  font: 12.5px/1.6 ui-monospace, Menlo, Consolas, "Courier New", monospace;
+  color: #33404d; white-space: pre-wrap; word-break: break-word; overflow-x: auto;
+}
+.rp-context mark, .rp-path mark, .rp-code mark {
+  background: #ffe08a; color: inherit; padding: 0 1px; border-radius: 2px;
+}
+.rp-ell { color: #9aa4ae; }
+.rp-empty-tip { color: #6a737d; margin: 1.4em 0 .7em; }
+.rp-chips { display: flex; flex-wrap: wrap; gap: .5em; margin: 0 0 1.6em; }
+.rp-chips button {
+  font: inherit; font-size: .88em; cursor: pointer; color: #1f6fa3;
+  background: #eef6fb; border: 1px solid #d5e6f2; border-radius: 999px; padding: .28em .85em;
+}
+.rp-chips button:hover { border-color: #9cc7e0; background: #e3f1f9; }
+.rp-stats { color: #8a949e; font-size: .84em; margin-top: 2.2em; border-top: 1px solid #e8eaed; padding-top: .9em; }
+html[data-theme="dark"] .rp-hint,
+html[data-theme="dark"] .rp-stats { color: #93a0ad; }
+html[data-theme="dark"] .rp-crumb { color: #8b98a5; }
+html[data-theme="dark"] .rp-sep { color: #5d6a77; }
+html[data-theme="dark"] .rp-leaf { color: #e2eaf1; }
+html[data-theme="dark"] .rp-path:hover .rp-leaf { color: #8ec8ea; }
+html[data-theme="dark"] .rp-kind {
+  color: #9aa7b4; background: #232d37; border-color: #35414d;
+}
+html[data-theme="dark"] .rp-summary, html[data-theme="dark"] .rp-context { color: #c3ccd6; }
+html[data-theme="dark"] .rp-group,
+html[data-theme="dark"] #rp-search ul.rp-results > li.rp-single { border-top-color: #333d49; }
+html[data-theme="dark"] .rp-doc { color: #249ee8; }
+html[data-theme="dark"] .rp-doc:hover { color: #6cc0f0; }
+html[data-theme="dark"] .rp-items { border-left-color: #2a333d; }
+html[data-theme="dark"] #rp-search ul.rp-items > li.sel { background: #1e2a35; }
+html[data-theme="dark"] .rp-toggle { color: #9aa4ae; }
+html[data-theme="dark"] .rp-toggle:hover { color: #8ec8ea; }
+html[data-theme="dark"] .rp-stats { border-top-color: #333d49; }
+html[data-theme="dark"] .rp-code { background: #1b232c; border-color: #333d49; border-left-color: #46525f; color: #c9d3dd; }
+html[data-theme="dark"] .rp-context mark, html[data-theme="dark"] .rp-path mark,
+html[data-theme="dark"] .rp-code mark { background: #7a5c00; color: #ffeaa0; }
+html[data-theme="dark"] .rp-chips button { color: #8ec8ea; background: #1d2c38; border-color: #2c3f4f; }
+</style>
+
+<script src="search-index.js"></script>
+<script>
+(function () {
+  var DATA = window.RENPY_SEARCH_INDEX || { docs: [] };
+  var docs = DATA.docs.map(function (d) {
+    return {
+      u: d.u, t: d.t, tl: d.t.toLowerCase(),
+      o: typeof d.o === "number" ? d.o : 1e6,
+      s: d.s.map(function (s, si) {
+        return {
+          si: si,
+          a: s.a, h: s.h || '', hl: (s.h || '').toLowerCase(),
+          x: s.x || '', xl: (s.x || '').toLowerCase(),
+          c: (s.c || []).map(function (c) {
+            return { id: c[0], t: c[1], tl: c[1].toLowerCase() };
+          }),
+          d: (s.d || []).map(function (o) {
+            return { id: o[0], k: o[1], t: o[2], tl: o[2].toLowerCase() };
+          })
+        };
+      })
+    };
+  });
+
+  var input = document.querySelector('#rtd-search-form input[name="q"]');
+  var input2 = document.getElementById('rp-mobile-q');
+  var form = document.getElementById('rtd-search-form');
+  var $summary = document.getElementById('rp-summary');
+  var $results = document.getElementById('rp-results');
+  var $empty = document.getElementById('rp-empty');
+
+  var nSections = docs.reduce(function (n, d) { return n + d.s.length; }, 0);
+  var nCode = docs.reduce(function (n, d) {
+    return n + d.s.reduce(function (m, s) { return m + s.c.length; }, 0);
+  }, 0);
+  var nDef = docs.reduce(function (n, d) {
+    return n + d.s.reduce(function (m, s) { return m + s.d.length; }, 0);
+  }, 0);
+  document.getElementById('rp-stats').textContent =
+    rpM('search.stats', [docs.length, nSections, nCode, nDef]);
+
+  var CHIPS = ['save', '对话', '界面 screen', '图像 image', '音频', 'ATL',
+               '转场', 'character', 'text', 'menu', '构建发行版', 'Python'];
+  var chips = document.getElementById('rp-chips');
+  CHIPS.forEach(function (label) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.onclick = function () {
+      clearTimeout(timer);
+      update(label, true);
+      if (input) input.focus();
+    };
+    chips.appendChild(b);
+  });
+
+  function esc(s) {
+    return s.replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function terms(q) {
+    return q.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+  }
+
+  function countIn(hay, t) {
+    var n = 0, i = 0;
+    while ((i = hay.indexOf(t, i)) !== -1) { n++; i += t.length; }
+    return n;
+  }
+
+  function hasAll(hay, ts) {
+    for (var i = 0; i < ts.length; i++) {
+      if (hay.indexOf(ts[i]) === -1) return false;
+    }
+    return true;
+  }
+
+  function occurrences(hay, ts) {
+    var n = 0;
+    for (var i = 0; i < ts.length; i++) n += countIn(hay, ts[i]);
+    return n;
+  }
+
+  // matches that start a word ("config.save") beat ones buried inside a
+  // word ("screensaver") when ranking API names
+  function boundaryCount(text, t) {
+    var n = 0, i = 0;
+    while ((i = text.indexOf(t, i)) !== -1) {
+      var prev = i === 0 ? "" : text.charAt(i - 1);
+      if (!/[a-z0-9_]/.test(prev)) n++;
+      i += t.length;
+    }
+    return n;
+  }
+
+  // escape + wrap every hit of every term
+  function highlight(text, ts) {
+    var low = text.toLowerCase(), ranges = [];
+    for (var i = 0; i < ts.length; i++) {
+      var at = 0;
+      while ((at = low.indexOf(ts[i], at)) !== -1) {
+        ranges.push([at, at + ts[i].length]);
+        at += ts[i].length;
+      }
+    }
+    ranges.sort(function (a, b) { return a[0] - b[0] || b[1] - a[1]; });
+    var out = '', cur = 0;
+    for (var r = 0; r < ranges.length; r++) {
+      if (ranges[r][0] < cur) continue;
+      out += esc(text.slice(cur, ranges[r][0])) +
+             '<mark>' + esc(text.slice(ranges[r][0], ranges[r][1])) + '</mark>';
+      cur = ranges[r][1];
+    }
+    return out + esc(text.slice(cur));
+  }
+
+  function proseSnippet(text, ts, max) {
+    max = max || 200;
+    var low = text.toLowerCase(), at = -1;
+    for (var i = 0; i < ts.length; i++) {
+      var p = low.indexOf(ts[i]);
+      if (p !== -1 && (at === -1 || p < at)) at = p;
+    }
+    if (at === -1) at = 0;
+    var start = Math.max(0, at - 60);
+    if (start > 0) {
+      var sp = text.lastIndexOf(' ', at - 20);
+      if (sp > start - 30 && sp > 0) start = sp + 1;
+    }
+    var out = text.slice(start, start + max);
+    return (start > 0 ? '…' : '') + highlight(out, ts) +
+           (start + max < text.length ? '…' : '');
+  }
+
+  // the line that matched, plus one line of context on each side
+  function codeSnippet(text, ts) {
+    var lines = text.split('\n'), hit = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (hasAll(lines[i].toLowerCase(), ts)) { hit = i; break; }
+    }
+    if (hit === -1) {
+      for (var j = 0; j < lines.length; j++) {
+        var l = lines[j].toLowerCase();
+        for (var k = 0; k < ts.length; k++) {
+          if (l.indexOf(ts[k]) !== -1) { hit = j; break; }
+        }
+        if (hit !== -1) break;
+      }
+    }
+    if (hit === -1) hit = 0;
+    var from = Math.max(0, hit - 1), to = Math.min(lines.length, hit + 2);
+    // don't pad the excerpt with blank lines
+    while (from < hit && !lines[from].trim()) from++;
+    while (to > hit + 1 && !lines[to - 1].trim()) to--;
+    var body = [];
+    for (var n = from; n < to; n++) body.push(highlight(lines[n], ts));
+    var html = body.join('\n');
+    if (from > 0) html = '<span class="rp-ell">…</span>\n' + html;
+    if (to < lines.length) html += '\n<span class="rp-ell">…</span>';
+    return html;
+  }
+
+  // tier 0: API definitions, 1: code blocks, 2: headings, 3: prose
+  function collect(ts) {
+    var defs = [], codes = [], heads = [], bodies = [];
+    var defTotal = 0;
+    for (var di = 0; di < docs.length; di++) {
+      var d = docs[di];
+      var cap = [0, 0, 0, 0];
+      for (var si = 0; si < d.s.length; si++) {
+        var s = d.s[si];
+
+        for (var a = 0; a < s.d.length; a++) {
+          var o = s.d[a];
+          if (!hasAll(o.tl, ts)) continue;
+          if (defTotal >= 60) continue;
+          defTotal++;
+          var bound = boundaryCount(o.tl, ts[0]);
+          defs.push({
+            tier: 0,
+            score: 4000 + (o.tl === ts[0] ? 120 : 0) + Math.max(0, 40 - o.t.length) + bound * 60,
+            strong: bound > 0,
+            d: d, s: s, kind: 'def', title: o.t, id: o.id, label: o.k
+          });
+        }
+
+        for (var b = 0; b < s.c.length; b++) {
+          var c = s.c[b];
+          if (!hasAll(c.tl, ts)) continue;
+          if (cap[1] >= 3) continue;
+          cap[1]++;
+          codes.push({
+            tier: 1, score: 3000 + Math.min(occurrences(c.tl, ts), 10) * 8 +
+              Math.min(boundaryCount(c.tl, ts[0]) * 10, 40),
+            d: d, s: s, kind: 'code', text: c.t, id: c.id
+          });
+        }
+
+        if (s.hl && hasAll(s.hl, ts)) {
+          if (cap[2] < 3) {
+            cap[2]++;
+            var startsWith = s.hl.indexOf(ts[0]) === 0;
+            heads.push({
+              tier: 2, score: 2000 + (startsWith ? 80 : 0) + Math.min(occurrences(s.hl, ts), 5) * 8 +
+                Math.min(boundaryCount(s.hl, ts[0]) * 20, 40),
+              d: d, s: s, kind: 'head', title: (s.h || '').split(' › ').pop()
+            });
+          }
+        }
+
+        if (s.xl && hasAll(s.xl, ts)) {
+          if (cap[3] < 3) {
+            cap[3]++;
+            bodies.push({
+              tier: 3, score: 1000 + Math.min(occurrences(s.xl, ts), 10) * 8,
+              d: d, s: s, kind: 'body'
+            });
+          }
+        }
+      }
+    }
+
+    // "save" should not surface "screensaver"; drop mid-word API hits when
+    // there are enough proper word-boundary hits
+    var strong = defs.filter(function (e) { return e.strong; });
+    var pool = (strong.length >= 6 ? strong : defs).sort(function (x, y) {
+      return y.score - x.score;
+    });
+    var chosen = pool.slice(0, 8);
+
+    var all = chosen.concat(codes, heads, bodies);
+    all.sort(function (x, y) { return y.score - x.score; });
+    return all;
+  }
+
+  var sel = -1;
+
+  function hrefFor(e) {
+    var anchor = e.kind === 'def' ? e.id : (e.kind === 'code' ? e.id : e.s.a);
+    return e.d.u + (anchor ? '#' + anchor : '');
+  }
+
+  // the same page + the same target anchor is one option ("相同大类的相同内容"):
+  // a heading and its own paragraph, or a section listed twice, collapse into
+  // a single hit that still points at that exact anchor
+  function merge(list) {    var seen = {}, out = [];
+    for (var i = 0; i < list.length; i++) {
+      var key = hrefFor(list[i]);
+      if (seen[key]) continue;
+      seen[key] = 1;
+      out.push(list[i]);
+    }
+    return out;
+  }
+
+  // one entry per document, in the order the hits arrived (highest score
+  // first); the display order is decided later, see update()
+  function group(list) {
+    var map = {}, groups = [];
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i], g = map[e.d.u];
+      if (!g) {
+        g = map[e.d.u] = { d: e.d, items: [] };
+        groups.push(g);
+      }
+      g.items.push(e);
+    }
+    return groups;
+  }
+
+  // 0 when the keyword is part of the names shown for this hit (document
+  // title, section path, API name), 1 when it only occurs in the paragraphs or
+  // the code block -- the first kind is listed first
+  function nameHit(e, ts) {
+    var names = e.d.t + ' › ' + (e.s.h || '');
+    if (e.kind === 'def') names += ' › ' + e.title;
+    return hasAll(names.toLowerCase(), ts);
+  }
+
+  function renderGroup(g, ts) {
+    // one hit in this document: keep it on a single line, led by the blue
+    // category name, instead of a heading plus a list of one
+    if (g.items.length === 1) return renderItem(g.items[0], ts, true);
+
+    var html = '<li class="rp-group"><div class="rp-head">' +
+      '<button class="rp-toggle" type="button" aria-expanded="true"' +
+      ' aria-label="' + rpT('search.collapse') + '" title="' + rpT('search.toggle') + '">' +
+      '<svg viewBox="0 0 16 9" aria-hidden="true" focusable="false">' +
+      '<path d="M2.7 2.6H13.3L8 6.6Z"></path></svg></button>' +
+      '<a class="rp-doc" href="' + esc(g.d.u) + '" data-tab="' + esc(g.d.t) + '">' +
+      esc(g.d.t) + '</a></div><div class="rp-fold"><ul class="rp-items">';
+    for (var i = 0; i < g.items.length; i++) html += renderItem(g.items[i], ts);
+    return html + '</ul></div></li>';
+  }
+
+  function renderItem(e, ts, withDoc) {
+    var url = hrefFor(e);
+    // the document itself is the group heading, so the item only carries the
+    // path below it
+    var crumbs = (e.s.h || '').split(' › ');
+    if (crumbs[0] === e.d.t) crumbs = crumbs.slice(1);
+    if (e.kind === 'def') crumbs.push(e.title);
+    if (!crumbs.length) crumbs = [rpT('search.begin')];
+
+    var html = '<li class="rp-hit' + (withDoc ? ' rp-single' : '') +
+      '"><a class="rp-path" href="' + esc(url) + '" data-tab="' +
+      esc(crumbs[crumbs.length - 1] || e.d.t) + '">';
+    if (withDoc) {
+      html += '<span class="rp-doc rp-doc-inline">' + esc(e.d.t) + '</span>' +
+        '<span class="rp-sep">›</span>';
+    }
+    for (var k = 0; k < crumbs.length; k++) {
+      var last = k === crumbs.length - 1;
+      html += '<span class="rp-crumb' + (last ? ' rp-leaf' : '') +
+        (last && e.kind === 'def' ? ' rp-mono' : '') + '">' +
+        highlight(crumbs[k], ts) + '</span>' +
+        (last ? '' : '<span class="rp-sep">›</span>');
+    }
+    html += '</a>';
+
+    if (e.kind === 'def') {
+      html += '<span class="rp-kind">' + esc(e.label || rpT('search.def')) + '</span>';
+    } else if (e.kind === 'code') {
+      html += '<span class="rp-kind">' + rpT('search.code') + '</span><pre class="rp-code">' +
+        codeSnippet(e.text, ts) + '</pre>';
+    } else if (e.kind === 'head') {
+      if (e.s.x) {
+        html += '<p class="rp-context">' + proseSnippet(e.s.x, ts, 160) + '</p>';
+      }
+    } else {
+      html += '<p class="rp-context">' + proseSnippet(e.s.x, ts) + '</p>';
+    }
+    return html + '</li>';
+  }
+
+  var lastQuery = null;
+
+  function update(q, syncInput) {
+    if (syncInput) {
+      if (input && input.value !== q) input.value = q;
+      if (input2 && input2.value !== q) input2.value = q;
+    }
+
+    // a new query means new results: start reading from the top again
+    if (q !== lastQuery) {
+      lastQuery = q;
+      window.scrollTo(0, 0);
+    }
+    var ts = terms(q);
+    try {
+      var url = new URL(location.href);
+      if (q.trim()) url.searchParams.set('q', q.trim()); else url.searchParams.delete('q');
+      history.replaceState(null, '', url);
+    } catch (e) { /* file:// may refuse history updates */ }
+
+    // keep the tab's label in step with the query
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage(
+        'rp-title\n' + (q.trim() ? rpF('search.postTitle', q.trim()) : rpT('search.postTitleEmpty')));
+    }
+
+    if (!ts.length) {
+      sel = -1;
+      $results.innerHTML = ''; $summary.innerHTML = '';
+      $empty.hidden = false;
+      return;
+    }
+    $empty.hidden = true;
+
+    var t0 = performance.now();
+    var all = collect(ts);
+    sel = -1;
+
+    if (!all.length) {
+      $summary.innerHTML = rpF('search.none', esc(q.trim()));
+      $results.innerHTML = '';
+      return;
+    }
+
+    var merged = merge(all);
+    // name matches first, everything else after; inside each class the order
+    // follows the left sidebar (document order) and then the page's own
+    // section order
+    for (var mi = 0; mi < merged.length; mi++) {
+      merged[mi].rank = nameHit(merged[mi], ts) ? 0 : 1;
+    }
+    var groups = group(merged);
+    for (var sgi = 0; sgi < groups.length; sgi++) {
+      var grp = groups[sgi], best = 1;
+      for (var gii = 0; gii < grp.items.length; gii++) {
+        if (grp.items[gii].rank < best) best = grp.items[gii].rank;
+      }
+      grp.rank = (hasAll(grp.d.tl, ts) || best === 0) ? 0 : 1;
+      grp.items.sort(function (x, y) {
+        return x.rank - y.rank || x.s.si - y.s.si || x.tier - y.tier;
+      });
+    }
+    groups.sort(function (x, y) { return x.rank - y.rank || x.d.o - y.d.o; });
+
+    // 60 hits at most; a category is only split when the limit falls inside it
+    var shown = [], total = 0;
+    for (var gi = 0; gi < groups.length && total < 60; gi++) {
+      var items = [];
+      for (var ii = 0; ii < groups[gi].items.length && total < 60; ii++) {
+        items.push(groups[gi].items[ii]);
+        total++;
+      }
+      shown.push({ d: groups[gi].d, items: items });
+    }
+
+    $results.innerHTML = shown.map(function (g) { return renderGroup(g, ts); }).join('');
+
+    var ms = (performance.now() - t0).toFixed(0);
+    $summary.innerHTML = rpM('search.results', [all.length]) +
+      (merged.length < all.length ? rpM('search.merged', [merged.length]) : '') +
+      ' · ' + rpM('search.docs', [shown.length]) +
+      (total < merged.length ? ' · ' + rpM('search.showing', [total]) : '') +
+      ' · ' + ms + ' ms';
+  }
+
+  function moveSel(delta) {
+    var items = $results.querySelectorAll('li.rp-hit');
+    if (!items.length) return;
+    sel = Math.max(0, Math.min(items.length - 1, (sel < 0 ? -1 : sel) + delta));
+    for (var i = 0; i < items.length; i++) items[i].classList.toggle('sel', i === sel);
+    items[sel].scrollIntoView({ block: 'nearest' });
+  }
+
+  function openSel() {
+    var items = $results.querySelectorAll('li.rp-hit');
+    if (!items.length) return;
+    var a = items[Math.max(0, sel)].querySelector('a[data-tab]');
+    if (!a) return;
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage(
+        'rp-open-tab\n' + a.getAttribute('data-tab') + '\n' + a.href);
+      return;
+    }
+    location.href = a.getAttribute('href');
+  }
+
+  var timer = 0;
+
+  function onKey(e) {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveSel(-1); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(timer);
+      update(e.target.value, true);
+      if (sel >= 0) openSel();
+    } else if (e.key === 'Escape') {
+      clearTimeout(timer);
+      update('', true);
+    }
+  }
+
+  function bindInput(el) {
+    if (!el) return;
+    el.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { update(el.value, true); }, 80);
+    });
+    el.addEventListener('keydown', onKey);
+  }
+  bindInput(input);
+  bindInput(input2);
+
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (input) { clearTimeout(timer); update(input.value, true); }
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement !== input && document.activeElement !== input2) {
+      e.preventDefault();
+      var target = (input2 && window.matchMedia('(max-width: 900px)').matches) ? input2 : input;
+      if (target) { target.focus(); target.select(); }
+    }
+  });
+
+  // the gray arrow in the left gutter folds one 大类 away
+  $results.addEventListener('click', function (ev) {
+    var node = ev.target;
+    var btn = node && node.closest ? node.closest('.rp-toggle') : null;
+    if (btn) {
+      ev.preventDefault();
+      var group = btn.closest ? btn.closest('.rp-group') : btn.parentNode.parentNode;
+      if (!group) return;
+      var folded = group.classList.toggle('collapsed');
+      btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+      return;
+    }
+    // the desktop shell opens a result in a tab of its own, labelled with the
+    // entry's own name; in a plain browser the link just navigates as usual
+    var a = node && node.closest ? node.closest('a[data-tab]') : null;
+    if (!a) return;
+    if (!(window.chrome && window.chrome.webview)) return;
+    ev.preventDefault();
+    window.chrome.webview.postMessage(
+      'rp-open-tab\n' + a.getAttribute('data-tab') + '\n' + a.href);
+  });
+
+  var initial = new URLSearchParams(location.search).get('q') || '';
+  if (initial) { update(initial, true); }
+})();
+</script>

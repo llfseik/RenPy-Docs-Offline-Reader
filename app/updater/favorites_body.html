@@ -1,0 +1,330 @@
+<section id="rp-favorites">
+  <h1>收藏</h1>
+  <div class="fv-bar">
+    <svg class="fv-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12.00 3.20 L14.65 8.96 L20.94 9.70 L16.28 13.99 L17.53 20.20 L12.00 17.10 L6.47 20.20 L7.72 13.99 L3.06 9.70 L9.35 8.96 Z"></path></svg>
+    <input id="fv-q" type="search" placeholder="在收藏里筛选…" aria-label="在收藏里筛选" autocomplete="off" spellcheck="false">
+    <button id="fv-clear" type="button" title="清空" aria-label="清空">×</button>
+  </div>
+  <p class="fv-hint">按文档（大类）归档，命中过的词条（小类）列在下面；收藏存在本机，关掉程序也不会丢。</p>
+  <div id="fv-summary" class="fv-summary" aria-live="polite"></div>
+  <ul id="fv-list" class="fv-list"></ul>
+  <div id="fv-empty" class="fv-empty">
+    <p class="fv-empty-tip">还没有收藏。打开任意文档，点标题右侧的五角星：整篇文档就是大类，某个标题或定义就是它下面的小类。</p>
+    <p class="fv-stats" id="fv-stats"></p>
+  </div>
+</section>
+
+<style>
+#rp-favorites h1 { margin: .1em 0 .7em; }
+/* its own filter box, independent from the sidebar search */
+.fv-bar { display: flex; align-items: center; gap: .5em; margin: 0 0 .9em;
+  padding: 0 .75em; height: 2.5em; background: #fcfcfc;
+  border: 1px solid #d7dee6; border-radius: 6px; }
+.fv-bar:focus-within { border-color: #9cc7e0; box-shadow: 0 0 0 3px rgba(41,128,185,.10); }
+.fv-ico { flex: 0 0 auto; width: 16px; height: 16px; fill: #efaa00;
+  stroke: #efaa00; stroke-width: 1.4; stroke-linejoin: round; }
+#fv-q { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: none;
+  font: inherit; font-size: .98em; color: #2c3945; }
+#fv-clear { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: none;
+  background: none; color: #9aa4ae; font-size: 17px; line-height: 1; cursor: pointer;
+  border-radius: 4px; display: none; }
+#fv-clear:hover { background: #eef1f4; color: #c0392b; }
+.fv-bar.filled #fv-clear { display: block; }
+.fv-hint { color: #8a949e; font-size: .86em; margin: -.4em 0 1.1em; }
+.fv-summary { color: #4a5560; font-size: .95em; margin: 0 0 .2em; }
+
+/* one 大类 (document) per block, its 小类 indented underneath — the same
+   shape the search results use */
+.fv-list { list-style: none; margin: 0; padding: 0; }
+#rp-favorites ul.fv-list > li { list-style: none; margin: 0; }
+#rp-favorites ul.fv-list > li > * { margin-top: 0; margin-bottom: 0; }
+.fv-group { padding: .9em 0 .7em; border-top: 1px solid #e8eaed; }
+.fv-group:first-child { border-top: none; padding-top: .15em; }
+.fv-head { display: flex; align-items: center; gap: .5em; }
+.fv-doc { font-size: 1.34em; font-weight: 600; line-height: 1.35; color: #2980b9; }
+.fv-doc:hover { color: #3091d1; }
+.fv-n { font-size: .74em; line-height: 1.7; color: #8a949e; background: #f1f4f7;
+  border: 1px solid #e3e8ed; border-radius: 9px; padding: 0 .5em; }
+.fv-items { list-style: none; margin: .45em 0 0; padding: 0 0 0 .95em;
+  border-left: 2px solid #eef1f4; }
+#rp-favorites ul.fv-items > li { list-style: none; margin: 0; }
+/* the theme puts 12px margins on every direct child of a list item */
+#rp-favorites ul.fv-items > li > * { margin-top: 0; margin-bottom: 0; }
+#rp-favorites ul.fv-items > li > .fv-context { margin-top: .28em; }
+.fv-item { padding: .34em 0; }
+.fv-row { display: flex; align-items: flex-start; gap: .4em; }
+.fv-link { flex: 1 1 auto; min-width: 0; display: block; line-height: 1.6; }
+.fv-crumb { color: #7c8792; font-size: .86em; }
+.fv-leaf { color: #2c3945; font-size: 1.06em; font-weight: 600; }
+.fv-leaf.fv-mono { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+.fv-sep { color: #b6bfc8; font-size: .78em; padding: 0 .4em; }
+.fv-link:hover .fv-leaf { color: #2980b9; }
+.fv-context { margin: .28em 0 0; color: #55606a; font-size: .92em; line-height: 1.62;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; }
+.fv-doc-x { margin-top: .45em; }
+
+.fv-star { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: none;
+  background: none; color: #efaa00; cursor: pointer; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s; }
+.fv-head .fv-star { margin-left: auto; }
+.fv-star svg { width: 15px; height: 15px; fill: currentColor; stroke: currentColor;
+  stroke-width: 1.9; stroke-linejoin: round; stroke-linecap: round; }
+.fv-star:hover { background: #fdf3d6; }
+.fv-star:focus-visible { outline: 2px solid #9cc7e0; outline-offset: 1px; }
+.fv-empty-tip { color: #6a737d; margin: 1.6em 0 .7em; }
+.fv-stats { color: #8a949e; font-size: .84em; border-top: 1px solid #e8eaed;
+  padding-top: .9em; margin-top: 2em; }
+
+html[data-theme="dark"] .fv-bar { background: #141414; border-color: #333d49; }
+html[data-theme="dark"] .fv-bar:focus-within { border-color: #3f5f7a; }
+html[data-theme="dark"] #fv-q { color: #e2eaf1; }
+html[data-theme="dark"] #fv-clear { color: #8b98a5; }
+html[data-theme="dark"] #fv-clear:hover { background: #22262b; color: #ff8b7a; }
+html[data-theme="dark"] .fv-hint, html[data-theme="dark"] .fv-summary { color: #93a0ad; }
+html[data-theme="dark"] .fv-group { border-top-color: #333d49; }
+html[data-theme="dark"] .fv-doc { color: #249ee8; }
+html[data-theme="dark"] .fv-doc:hover { color: #6cc0f0; }
+html[data-theme="dark"] .fv-n { color: #9aa7b4; background: #232d37; border-color: #35414d; }
+html[data-theme="dark"] .fv-items { border-left-color: #2a333d; }
+html[data-theme="dark"] .fv-crumb { color: #8b98a5; }
+html[data-theme="dark"] .fv-leaf { color: #e2eaf1; }
+html[data-theme="dark"] .fv-link:hover .fv-leaf { color: #8ec8ea; }
+html[data-theme="dark"] .fv-sep { color: #5d6a77; }
+html[data-theme="dark"] .fv-context { color: #c3ccd6; }
+html[data-theme="dark"] .fv-star { color: #f4b41f; }
+html[data-theme="dark"] .fv-star:hover { background: #2a2313; }
+html[data-theme="dark"] .fv-empty-tip, html[data-theme="dark"] .fv-stats { color: #93a0ad; }
+html[data-theme="dark"] .fv-stats { border-top-color: #333d49; }
+</style>
+
+<script src="search-index.js"></script>
+<script>
+(function () {
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M12.00 3.20 L14.65 8.96 L20.94 9.70 L16.28 13.99 L17.53 20.20 ' +
+    'L12.00 17.10 L6.47 20.20 L7.72 13.99 L3.06 9.70 L9.35 8.96 Z"></path></svg>';
+  // favourites are kept per document: switching documents shows its own list
+  var DOC_ID = window.RP_DOC_ID || 'zh-CN';
+  var KEY = 'rp-favorites:' + DOC_ID;
+  try {
+    if (DOC_ID === 'zh-CN' && !localStorage.getItem(KEY) && localStorage.getItem('rp-favorites'))
+      localStorage.setItem(KEY, localStorage.getItem('rp-favorites'));
+  } catch (e) { }
+
+  // the search index also carries the sidebar order of every document (d.o)
+  // and the anchors in page order, which is what the list is sorted by
+  var DOC_O = {}, ANCHOR_R = {};
+  (function () {
+    var idx = window.RENPY_SEARCH_INDEX || { docs: [] };
+    var docs = idx.docs || [];
+    for (var i = 0; i < docs.length; i++) {
+      var d = docs[i];
+      if (!d.u) continue;
+      DOC_O[d.u] = (typeof d.o === 'number' ? d.o : 1e6 + i);
+      var m = {}, k = 0, s, j;
+      for (s = 0; s < (d.s || []).length; s++) {
+        var sec = d.s[s], rk = k++;
+        if (sec.a) m[sec.a] = rk;
+        // the heading's permalink id can differ from the parser's anchor
+        if (sec.l && !m.hasOwnProperty(sec.l)) m[sec.l] = rk;
+        for (j = 0; j < (sec.d || []).length; j++) m[sec.d[j][0]] = k++;
+      }
+      ANCHOR_R[d.u] = m;
+    }
+  })();
+  function docRank(u) { return DOC_O.hasOwnProperty(u) ? DOC_O[u] : 1e7; }
+  function anchorRank(f) {
+    var m = ANCHOR_R[f.u];
+    if (!m || !m.hasOwnProperty(f.a)) return 1e7;
+    return m[f.a];
+  }
+  // newest favourites carry the entry's position in the page (n); older ones
+  // fall back to the anchor order taken from the index
+  function itemRank(f) {
+    if (typeof f.n === 'number' && f.n >= 0) return f.n;
+    return anchorRank(f);
+  }
+
+  var $q = document.getElementById('fv-q');
+  var $bar = $q ? $q.parentNode : null;
+  var $clear = document.getElementById('fv-clear');
+  var $list = document.getElementById('fv-list');
+  var $summary = document.getElementById('fv-summary');
+  var $empty = document.getElementById('fv-empty');
+  var $stats = document.getElementById('fv-stats');
+
+  function load() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY) || '[]');
+      return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
+    } catch (e) { return []; }
+  }
+  function save(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  function esc(s) {
+    return String(s || '').replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  // older entries have no kind: the one named like the document is the 大类
+  function isDoc(f) {
+    return f.k ? f.k === 'doc' : (f.t === f.d);
+  }
+  function crumbsOf(f) {
+    var p = String(f.p || '').split(' › ');
+    if (p.length && p[0] === f.d) p = p.slice(1);
+    return p.filter(function (x) { return x; });
+  }
+  function terms(q) {
+    return String(q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  }
+  function matches(f, ts) {
+    var hay = (f.d + ' › ' + (f.p || '') + ' › ' + f.t + ' ' + (f.x || '')).toLowerCase();
+    for (var i = 0; i < ts.length; i++) {
+      if (hay.indexOf(ts[i]) === -1) return false;
+    }
+    return true;
+  }
+
+  function group(all, ts) {
+    var map = {}, groups = [];
+    for (var i = 0; i < all.length; i++) {
+      var f = all[i];
+      if (ts.length && !matches(f, ts)) continue;
+      var g = map[f.u];
+      if (!g) { g = map[f.u] = { u: f.u, d: f.d, doc: null, items: [], ts: 0 }; groups.push(g); }
+      if (!g.d && f.d) g.d = f.d;
+      if ((f.ts || 0) > g.ts) g.ts = f.ts || 0;
+      if (isDoc(f)) { if (!g.doc) g.doc = f; }
+      else g.items.push(f);
+    }
+    groups.sort(function (a, b) {
+      return docRank(a.u) - docRank(b.u) || a.ts - b.ts;
+    });
+    for (var k = 0; k < groups.length; k++) {
+      groups[k].items.sort(function (a, b) {
+        return itemRank(a) - itemRank(b) || (a.ts || 0) - (b.ts || 0);
+      });
+    }
+    return groups;
+  }
+
+  function groupHtml(g) {
+    var href = g.u + (g.doc && g.doc.a ? '#' + g.doc.a : '');
+    var name = g.d || g.u;
+    var html = '<li class="fv-group"><div class="fv-head">' +
+      '<a class="fv-doc" href="' + esc(href) + '" data-tab="' + esc(name) + '">' +
+      esc(name) + '</a>';
+    if (g.items.length) html += '<span class="fv-n">' + g.items.length + '</span>';
+    html += '<button type="button" class="fv-star" data-kind="doc" data-u="' + esc(g.u) +
+      '" title="' + rpT('fav.removeWhole') + '" aria-label="' + rpT('fav.removeWhole') + '">' + STAR + '</button></div>';
+
+    if (g.items.length) {
+      html += '<ul class="fv-items">';
+      for (var i = 0; i < g.items.length; i++) {
+        var f = g.items[i];
+        var segs = crumbsOf(f).concat(f.t && f.t !== g.d ? [f.t] : []);
+        var path = '';
+        for (var k = 0; k < segs.length; k++) {
+          if (k) path += '<span class="fv-sep">›</span>';
+          var cls = k === segs.length - 1 ? 'fv-leaf' : 'fv-crumb';
+          path += '<span class="' + cls + '">' + esc(segs[k]) + '</span>';
+        }
+        if (!segs.length) path = '<span class="fv-leaf">' + esc(f.t || name) + '</span>';
+
+        html += '<li class="fv-item"><div class="fv-row">' +
+          '<a class="fv-link" href="' + esc(f.u + (f.a ? '#' + f.a : '')) +
+          '" data-tab="' + esc(f.t) + '">' + path + '</a>' +
+          '<button type="button" class="fv-star" data-u="' + esc(f.u) +
+          '" data-key="' + esc(f.u + '#' + f.a) + '" title="' + rpT('fav.remove') + '" ' +
+          'aria-label="' + rpT('fav.remove') + '">' + STAR + '</button></div>';
+        if (f.x) html += '<p class="fv-context">' + esc(f.x) + '</p>';
+        html += '</li>';
+      }
+      html += '</ul>';
+    } else if (g.doc && g.doc.x) {
+      // a whole-document favourite stands on its own until a 小类 joins it
+      html += '<p class="fv-context fv-doc-x">' + esc(g.doc.x) + '</p>';
+    }
+    return html + '</li>';
+  }
+
+  function render() {
+    var all = load();
+    var ts = terms($q ? $q.value : '');
+    var groups = group(all, ts);
+    var nItems = 0;
+    for (var i = 0; i < groups.length; i++) nItems += groups[i].items.length;
+
+    if ($bar) $bar.classList.toggle('filled', !!(($q.value || '').trim()));
+
+    if (!all.length) {
+      $list.innerHTML = '';
+      $summary.innerHTML = '';
+      $empty.hidden = false;
+      if ($stats) $stats.textContent = rpT('fav.local');
+      return;
+    }
+    $empty.hidden = true;
+
+    $summary.innerHTML = ts.length
+      ? rpM('fav.stats', [groups.length, nItems])
+      : rpM('fav.statsAll', [groups.length, nItems]);
+
+    if (!groups.length) {
+      $list.innerHTML = '<li class="fv-empty-tip">' + rpF('fav.none', esc($q.value.trim())) + '</li>';
+      return;
+    }
+    $list.innerHTML = groups.map(groupHtml).join('');
+  }
+
+  $list.addEventListener('click', function (ev) {
+    var star = ev.target.closest ? ev.target.closest('.fv-star') : null;
+    if (star) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var list = load();
+      if (star.getAttribute('data-kind') === 'doc') {
+        var u = star.getAttribute('data-u');
+        save(list.filter(function (f) { return f.u !== u; }));
+      } else {
+        var key = star.getAttribute('data-key');
+        save(list.filter(function (f) { return (f.u + '#' + f.a) !== key; }));
+      }
+      render();
+      return;
+    }
+    // a row opens its entry in a tab, exactly like a search hit does
+    var a = ev.target.closest ? ev.target.closest('a.fv-link, a.fv-doc') : null;
+    if (!a) return;
+    if (window.chrome && window.chrome.webview) {
+      ev.preventDefault();
+      window.chrome.webview.postMessage(
+        'rp-open-tab\n' + a.getAttribute('data-tab') + '\n' + a.href);
+    }
+  });
+
+  if ($q) {
+    $q.addEventListener('input', render);
+    $q.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { $q.value = ''; render(); }
+    });
+  }
+  if ($clear) {
+    $clear.addEventListener('click', function () {
+      $q.value = '';
+      render();
+      $q.focus();
+    });
+  }
+  window.addEventListener('pageshow', render);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) render();
+  });
+
+  render();
+})();
+</script>
