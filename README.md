@@ -86,7 +86,7 @@ app/
 
 - Windows 10/11 64-bit only; WebView2 is required.
 - The documentation mirror may lag behind the live site; the official pages are authoritative.
-- The “app update check” currently only stores the URL and the switch; no actual network check is implemented yet.
+- The app update check only opens the download page; it does not install updates automatically.
 - Nightly documentation changes frequently, so a downloaded copy can go out of date quickly.
 
 ## License

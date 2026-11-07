@@ -127,7 +127,8 @@ namespace RenPyDocs
         public bool DocUpdateOnStart = true;
         public bool DocUpdateDaily = true;
         public int SearchHistoryMax = 5;
-        public bool AppUpdateOnStart = false;
+        public bool AppUpdateOnStart = true;
+        public bool AppUpdateDaily = true;
         public string AppUpdateUrl = "";
         public bool ClearTabsOnExit = false;
 
@@ -137,6 +138,7 @@ namespace RenPyDocs
         public static AppSettings Load()
         {
             AppSettings s = new AppSettings();
+            bool hasAppDaily = false;
             try
             {
                 if (!File.Exists(FilePath)) return s;
@@ -160,12 +162,26 @@ namespace RenPyDocs
                                 s.SearchHistoryMax = Math.Max(0, Math.Min(10, n));
                             break;
                         case "app-update": s.AppUpdateOnStart = val == "1"; break;
+                        case "app-update-daily":
+                            hasAppDaily = true;
+                            s.AppUpdateDaily = val == "1";
+                            break;
                         case "app-update-url": s.AppUpdateUrl = val; break;
                         case "clear-tabs": s.ClearTabsOnExit = val == "1"; break;
                     }
                 }
             }
             catch (Exception) { }
+
+            // Before this version the app-update switch was saved but did
+            // nothing; an old 0 was therefore not a meaningful choice. Migrate
+            // files without the daily key to the new on/on defaults once; after
+            // a save the daily key exists and later choices are respected.
+            if (File.Exists(FilePath) && !hasAppDaily)
+            {
+                s.AppUpdateOnStart = true;
+                s.AppUpdateDaily = true;
+            }
             return s;
         }
 
@@ -182,6 +198,7 @@ namespace RenPyDocs
                     "doc-update-daily=" + (DocUpdateDaily ? "1" : "0") + nl +
                     "search-history-max=" + SearchHistoryMax + nl +
                     "app-update=" + (AppUpdateOnStart ? "1" : "0") + nl +
+                    "app-update-daily=" + (AppUpdateDaily ? "1" : "0") + nl +
                     "app-update-url=" + AppUpdateUrl + nl +
                     "clear-tabs=" + (ClearTabsOnExit ? "1" : "0") + nl);
             }
@@ -362,9 +379,24 @@ namespace RenPyDocs
                                     return;      // 取消: nothing is written
                                 string oldLanguage = Lang.Id;
                                 int oldHistory = settings.SearchHistoryMax;
+                                bool oldAppUpdate = settings.AppUpdateOnStart;
+                                string oldAppUrl = settings.AppUpdateUrl;
                                 settings = dlg.Result;
                                 settings.Save();
                                 Lang.Set(settings.Language);
+                                if (oldAppUpdate != settings.AppUpdateOnStart ||
+                                    !string.Equals(oldAppUrl, settings.AppUpdateUrl,
+                                                   StringComparison.Ordinal))
+                                {
+                                    // a different switch / URL should be checked
+                                    // on the next start even if today was used
+                                    try
+                                    {
+                                        if (File.Exists(AppCheckFile))
+                                            File.Delete(AppCheckFile);
+                                    }
+                                    catch (Exception) { }
+                                }
                                 Log("settings: language=" + settings.Language +
                                     " doc-update=" + settings.DocUpdateOnStart +
                                     " app-update=" + settings.AppUpdateOnStart +
@@ -542,7 +574,7 @@ namespace RenPyDocs
                 ResumeDownloadWatch();
                 tabs.Invalidate();
                 core.Navigate(tabs.Tabs[tabs.Active].Url);
-                AutoCheckDocumentUpdates();
+                await StartupChecks();
             }
             catch (Exception ex)
             {
@@ -2203,6 +2235,68 @@ namespace RenPyDocs
             else CheckDocUpdate(id, true);
         }
 
+        // App update first, then the document check: when both have updates,
+        // the app-update sheet is the one that appears first. A quiet result
+        // (no update / no release) adds no window at all.
+        private async Task StartupChecks()
+        {
+            if (settings != null && settings.AppUpdateOnStart)
+            {
+                if (settings.AppUpdateDaily && AppCheckedToday())
+                {
+                    Log("app-update: startup skipped (already checked today)");
+                }
+                else
+                {
+                    try
+                    {
+                        await Task.Delay(800);
+                        if (!IsDisposed)
+                        {
+                            Log("app-update: startup");
+                            bool checkedOk = await AppUpdateUI.CheckAndShowAsync(
+                                this, false, settings.AppUpdateUrl);
+                            // a failed lookup (offline / no release yet) must not
+                            // consume today's one attempt: retry on the next start
+                            if (checkedOk && settings.AppUpdateDaily)
+                                MarkAppCheckedToday();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("app-update: " + ex.Message);
+                    }
+                }
+            }
+
+            if (!IsDisposed) AutoCheckDocumentUpdates();
+        }
+
+        // "每天最多检查一次" for the app itself: its own date marker, so the
+        // document check and the app check do not consume each other's day.
+        private static readonly string AppCheckFile = Path.Combine(
+            TabsDir, "app-check.txt");
+
+        private static bool AppCheckedToday()
+        {
+            try
+            {
+                if (!File.Exists(AppCheckFile)) return false;
+                return File.ReadAllText(AppCheckFile).Trim() ==
+                       DateTime.Now.ToString("yyyy-MM-dd");
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static void MarkAppCheckedToday()
+        {
+            try
+            {
+                File.WriteAllText(AppCheckFile, DateTime.Now.ToString("yyyy-MM-dd"));
+            }
+            catch (Exception) { }
+        }
+
         // "每天最多检查一次": the date of the last startup check, local time
         private static readonly string DocCheckFile = Path.Combine(
             TabsDir, "doc-check.txt");
@@ -3099,6 +3193,7 @@ namespace RenPyDocs
         private readonly CheckBox docDaily;
         private readonly TextBox appUrl;
         private readonly CheckBox appUpdate;
+        private readonly CheckBox appDaily;
         private readonly TrackBar searchMax;
         private readonly CheckBox clearTabs;
 
@@ -3115,7 +3210,7 @@ namespace RenPyDocs
             ShowInTaskbar = false;
             BackColor = Color.White;
             Font = Lang.UiFont(10F);
-            ClientSize = new Size(660, 621);
+            ClientSize = new Size(660, 649);
 
             Label title = new Label();
             title.Text = Text;
@@ -3191,13 +3286,17 @@ namespace RenPyDocs
                                      "Check for app updates at startup",
                                      "起動時にアプリの更新を確認する"), 499);
             appUpdate.Checked = current.AppUpdateOnStart;
+            appDaily = Check(Lang.T("每天最多检查一次", "每天最多檢查一次",
+                                    "Check at most once a day",
+                                    "チェックは 1 日 1 回まで"), 527);
+            appDaily.Checked = current.AppUpdateDaily;
 
             Button cancel = new Button();
             cancel.Text = Lang.T("取消", "取消", "Cancel", "キャンセル");
             cancel.Font = Lang.UiFont(11F);
             cancel.Size = new Size(124, 44);
             cancel.DialogResult = DialogResult.Cancel;
-            cancel.Location = new Point(ClientSize.Width - 316, 547);
+            cancel.Location = new Point(ClientSize.Width - 316, 575);
             Controls.Add(cancel);
 
             Button save = new Button();
@@ -3205,7 +3304,7 @@ namespace RenPyDocs
             save.Font = Lang.UiFont(11F);
             save.Size = new Size(124, 44);
             save.DialogResult = DialogResult.OK;
-            save.Location = new Point(ClientSize.Width - 172, 547);
+            save.Location = new Point(ClientSize.Width - 172, 575);
             save.Click += delegate { Result = Collect(); };
             Controls.Add(save);
 
@@ -3249,6 +3348,7 @@ namespace RenPyDocs
             s.DocUpdateOnStart = docUpdate.Checked;
             s.DocUpdateDaily = docDaily.Checked;
             s.AppUpdateOnStart = appUpdate.Checked;
+            s.AppUpdateDaily = appDaily.Checked;
             s.AppUpdateUrl = appUrl.Text.Trim();
             s.SearchHistoryMax = searchMax.Value;
             s.ClearTabsOnExit = clearTabs.Checked;
@@ -3259,7 +3359,7 @@ namespace RenPyDocs
         {
             base.OnShown(e);
             // grey cue inside the empty URL box
-            SendMessage(appUrl.Handle, 0x1501, (IntPtr)1, "https://github.com/…");
+            SendMessage(appUrl.Handle, 0x1501, (IntPtr)1, AppUpdater.DefaultUrl);
         }
     }
 

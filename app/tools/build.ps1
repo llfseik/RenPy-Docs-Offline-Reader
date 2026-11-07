@@ -73,7 +73,7 @@ $refs = @(
 & $csc /nologo /target:winexe /platform:x64 /optimize+ "/win32icon:$app\app.ico" `
   "/out:$app\RenPyDocs.exe" $refs (Join-Path $app "src\Program.cs") `
   (Join-Path $app "src\TabStrip.cs") (Join-Path $app "src\Updater.cs") `
-  (Join-Path $app "src\Integrity.cs")
+  (Join-Path $app "src\Integrity.cs") (Join-Path $app "src\AppUpdate.cs")
 if ($LASTEXITCODE -ne 0) { throw "csc failed" }
 
 Write-Host "== shortcut =="

@@ -258,23 +258,23 @@ renpy文档/
 - 位置：右下角按钮列最上面一个（`#rp-settings-fab`，`bottom:15.15em`），就是原来 `+` 的位置；和切换文档按钮的间距还是 11px（设置 553–597、书本 608–652）
 - 外观：和下面几个按钮**同一个选择器组**——2.2em 圆、`right:1.6em`、`transition:all .3s ease-in-out`、同一套阴影与暗色底色；图标是 Lucide 齿轮线稿（24 viewBox，`stroke-width:2.6`，显示 1.08em）
 - 行为：只在桌面版显示（没有 `chrome.webview` 时按钮 `display:none`）；点击 `postMessage('rp-open-settings')`
-- 弹窗：C# 的 `SettingsDialog(AppSettings current)`，660×621，白色底、34,28 处 18pt 粗体标题，五组设置自上而下（组与组之间统一 24px，标题到控件 28px，复选框之间 28px；只有搜索记录数量 → 软件更新检查这段用 12px，因为 TrackBar 底部带刻度、视觉上本身多占一截）：
+- 弹窗：C# 的 `SettingsDialog(AppSettings current)`，660×649，白色底、34,28 处 18pt 粗体标题，五组设置自上而下（组与组之间统一 24px，标题到控件 28px，复选框之间 28px；只有搜索记录数量 → 软件更新检查这段用 12px，因为 TrackBar 底部带刻度、视觉上本身多占一截）：
   1. **系统语言设置** — `ComboBox`（`DropDownList`）：简体中文 / 繁體中文 / English / 日本語
   2. **文档更新检查** — 勾选「启动时检查文档更新」；下面还有「每天最多检查一次」（`doc-update-daily`，**默认勾选**），勾上后启动检查会在 `%LOCALAPPDATA%\RenPyDocs\doc-check.txt` 里记下当天日期（`yyyy-MM-dd`，本地时间），同一天再启动就跳过（日志 `check: startup skipped (already checked today)`），手动检查不受限制
   3. **关闭清除标签** — 勾选「关闭后清除所有标签页」
   4. **搜索记录数量** — 横向 `TrackBar`，0–10，右侧数字实时跟着滑块走；控制每个文档最多保留几条搜索历史，0 表示不保留（`search-history-max`）
-  5. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/…`）+ 勾选「启动时检查软件更新」（只保存，暂不做实际检查）
+  5. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/llfseik/RenPy-Docs-Offline-Reader`，留空即用项目默认仓库）+ 勾选「启动时检查软件更新」（`app-update`）+ 勾选「每天最多检查一次」（`app-update-daily`，两项默认开启）；启动时查询 GitHub Release
   底部两个 124×44 的按钮：**取消**（左，`DialogResult.Cancel`）/ **保存**（右，`DialogResult.OK`）。控件的值只在点「保存」时由 `Collect()` 收进 `Result`；取消 / Esc / 关闭窗口都不写文件、不改任何状态
-- 存储：`%LOCALAPPDATA%\RenPyDocs\settings.txt`，七行 `key=value`：`language` / `doc-update` / `doc-update-daily` / `search-history-max` / `app-update` / `app-update-url` / `clear-tabs`。`AppSettings.Load()` 对缺文件、缺键、坏值一律回默认（语言 `zh-CN`、文档更新开、每天一次开、搜索历史 5 条、软件更新关、清标签关）
+- 存储：`%LOCALAPPDATA%\RenPyDocs\settings.txt`，八行 `key=value`：`language` / `doc-update` / `doc-update-daily` / `search-history-max` / `app-update` / `app-update-daily` / `app-update-url` / `clear-tabs`。`AppSettings.Load()` 对缺文件、缺键、坏值一律回默认（语言 `zh-CN`、文档更新开、每天一次开、搜索历史 5 条、软件更新开、软件更新每天一次开、清标签关）；旧文件没有 `app-update-daily` 时按新默认迁移为两项都开
 - 行为（保存后生效）：
   - 语言：`Lang.Set(settings.Language)` 立即切换软件自身的界面语言（所有 `Lang.T(zh, tw, en, ja)` 弹窗、按钮、提示、标签标题）；`settings.txt` 里的值在下次启动时由 `Main()` 先读一次。界面字体也跟着语言走（`Lang.UiFont`）：简中 `Microsoft YaHei UI`、繁中 `Microsoft JhengHei UI`、英语 `Segoe UI`、日语 `Yu Gothic UI`——之前一律用雅黑画英/日/繁中，字体回退后字宽和基线跟按钮中心对不上，按钮文字会偏；换成本地字体后按钮文字重新居中
   - 标签标题：**文档自身的标签**用的是文档页面标题（内容，中文文档就显示中文标题，不随界面语言变）；**应用自己的页面**（搜索 / 收藏 / 请选择文档 / 首页）在 `CleanTitle()` → `KnownPageTitle()` 里映射成当前语言，`DocumentTitleChanged` 也会同步改当前标签（`pendingTitle` 存在时让搜索命中的标签名优先）
   - 下载 / 更新进度与报错：`Updater.cs` 里原来写死的中文（页面 a/b、静态资源、重建索引、访问校验超时、下载失败、重建失败等）已经接入 `Lang.T`，下载失败弹窗里显示的异常文案也会跟着语言走
   - 页面侧文案：`build.py` 里有一套四语言 `UI_TEXT` 字典，`ui_script()` 把它注入每个页面 `<head>`（`window.RP_UI` + `rpT/rpF/rpM`，带 `<!--rp-ui-text-->` 标记，重复构建会先删旧的）；宿主启动时用 `AddScriptToExecuteOnDocumentCreatedAsync` 注入 `window.__rpUiLang`，换语言时重新注入并 `Reload()` 当前页。悬浮按钮 / 切换文档面板 / 搜索页 / 收藏页 / 选择页的静态文案由 FAB 脚本在载入时替换，动态文案（结果统计、toast、下载/暂停标题）改用 `rpT/rpF/rpM`；选择页 / 搜索页 / 收藏页的 `<title>` 和面包屑也按语言重写（文档页标题是文档内容，不动）
   - 仍然保持原文的：文档正文、左侧目录、页面标题里的站名（`— Ren'Py 中文文档`）、搜索页的常见主题 chips（它们是中文文档里的检索词）、搜索结果里的章节名和 API 类型标签（索引内容）。底部免责声明四段也进了 `UI_TEXT`（`disc.1`…`disc.4`），由 FAB 脚本在载入时整块重建
-  - 文档更新：`AutoCheckDocumentUpdates()` 在 `LoadStartupTabs()` 之后按 `doc-update` 检查**当前打开的文档**——`zh-CN` 走 `CheckForUpdates(true)`，其余走 `CheckDocUpdate(id, true)`；和页面上的「检查更新」完全同一条路径：先弹 `BusyForm` 进度窗，检查完弹「当前已是最新版本」/「无需更新」（带「校验完整性」），有新版则弹更新确认框
+  - 文档更新：`StartupChecks()` 先检查软件更新，再调用 `AutoCheckDocumentUpdates()` 按 `doc-update` 检查**当前打开的文档**——`zh-CN` 走 `CheckForUpdates(true)`，其余走 `CheckDocUpdate(id, true)`；和页面上的「检查更新」完全同一条路径：先弹 `BusyForm` 进度窗，检查完弹「当前已是最新版本」/「无需更新」（带「校验完整性」），有新版则弹更新确认框
   - 搜索历史：`PageSettingsScript()` 把 `window.__rpUiLang` 和 `window.__rpSearchHistoryMax` 一起注入；页面 `load/save/remember` 都按 `MAX` 截断，`MAX<=0` 时不再记录、并删掉存储键。保存设置时 `TrimSearchHistoryAsync()` 先遍历 `localStorage` 里所有 `rp-search-history*` 键裁到新上限，再 `Reload()` 当前页（页面载入时也会再裁一次自己的键）
-  - 软件更新：`app-update` / `app-update-url` 只保存，暂不联网
+  - 软件更新：`StartupChecks()` 在启动 0.8 秒后先查 `app-update`，查完（有更新时等弹窗关闭）才走文档检查，所以两者都有更新时软件更新弹窗在前；`app-update-daily` 打开时用 `%LOCALAPPDATA%\RenPyDocs\app-check.txt` 记当天日期（`yyyy-MM-dd`），同一天再启动就跳过（日志 `app-update: startup skipped (already checked today)`），只有检查成功才记日期，离线/失败下次启动会重试。`AppUpdater` 把 GitHub 仓库地址转换成 `api.github.com/repos/<owner>/<repo>/releases/latest`，也支持返回 `{"version":"1.0.1","url":"…"}` 的自定义清单；比较 `AppUpdate.cs` 里的 `CurrentVersion`（1.0.0），只提示并打开下载页面，不自动安装；无更新/无 Release 时启动过程不弹窗
   - 清标签：`clear-tabs` 打开时，`OnFormClosing` 的第二次收尾（`SaveTabs()` 之后）调 `ClearSavedTabs()` 删掉全部 `tabs-*.txt`；`doc.txt` 保留，所以下次启动 `LoadStartupTabs()` 找不到列表，只开**当前文档的首页**
 - 语言覆盖范围：`Program.cs` 的弹窗/按钮/提示，以及页面侧 `UI_TEXT` 字典覆盖的悬浮按钮、切换面板、搜索页 / 收藏页 / 选择页和底部免责声明；文档正文、目录、文档标签标题保持原文
 - 旧「测试」入口连同 `#rp-test-panel`、`TESTS` 数组、`rp-open-tab` 的页面侧调用一起删掉了（`rp-open-tab` 仍留给搜索命中开标签用）
