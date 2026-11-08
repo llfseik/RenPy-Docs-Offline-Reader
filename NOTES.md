@@ -94,7 +94,7 @@ renpy文档/
   - 面板整体：宽 260～390（`min-width:13em; max-width:19.5em`），每行 **36.8px 高、名字 16px**，左侧图标槽 16.8px；面板最高 `14.2em`（284px，底部离窗口下沿 8px），**头行固定不滚**，只有列表滚动（`display:flex` + 列表 `flex:1 1 auto;min-height:0;overflow-y:auto`，细滚动条 6px）。名字列 201～214px（随面板自适应），最长的是「Ren'Py Nightly Development」（16px 下约 201px）；名字再长就会被 `.rp-doc-name` 的 `text-overflow:ellipsis` 截掉，得先放宽面板
   - 选择状态：文档左侧 1em 的槽里是蓝色 ✓（当前打开的那一份）；删除状态：同一个槽交叉淡入淡出成**红色垃圾桶**（`.2s ease-in-out`，与 ✓ 同一盒子、同一居中方式；放大后实测 ✓ 11.5×13.5px、垃圾桶 13×13px，盒子都是 16.8×16.8）
   - 删除状态下**下载箭头要藏起来**（它就压在垃圾桶上，不藏点不动删除），藏法和打勾↔垃圾桶完全一样：换 `opacity`（`.2s ease-in-out`，逐帧实测和 √ 的曲线一模一样，0.99→0.77→0.36→0.06→0）、淡完再 `visibility:hidden`（`0s linear .2s`），Tab 也停不上去；但**下载中的圆环照旧显示**、照旧能点暂停/继续；圆环在的时候垃圾桶自己先退场，避免两个图标叠影
-  - 删除状态下面板里的行只能靠**左边的垃圾桶**删（点名字不会删）；点垃圾桶先弹**确认框**（见 4.12），确认后宿主删掉 `site/<id>` 的本地文件并重写 `docs.json`，**这一行不会消失**，而是原地变成「未下载」：名字变灰、左边变成下载箭头，收藏 / 标签页 / 搜索记录都保留（`rp-docs-gone` 这套已不再使用）。**正在读的那份也能删**：确认文案是「本文档「<名字>」正在使用，是否删除？浏览数据将会保留」，删完宿主保存标签 → 删目录 → 切到根目录的空白选择页（4.10）
+  - 删除状态下面板里的行只能靠**左边的垃圾桶**删（点名字不会删）；点垃圾桶先弹**确认框**（见 4.12），确认后宿主删掉 `site/<id>` 的本地文件、重写 `docs.json`，并**删掉 `tabs-<id>.txt`**，**这一行不会消失**，而是原地变成「未下载」：名字变灰、左边变成下载箭头，收藏 / 搜索记录 / 历史记录都保留（`rp-docs-gone` 这套已不再使用）。**正在读的那份也能删**：确认文案是「本文档「<名字>」正在使用，是否删除？除标签页外的数据（历史记录、收藏等）会保留」，删完宿主删目录 + 标签 → 切到根目录的空白选择页（4.10）
   - 再点滑块（或按空格/回车，滑块可聚焦）切回选择状态；点按钮 / 点面板外 / Esc 关面板，但滑块位置保留到页面刷新
   - **显示 / 收起带过渡**：面板不再用 `display:none` 切换，改成 `opacity` + `visibility`（`visibility 0s linear .17s` 延迟到淡出结束才变，收起后 `pointer-events:none`、Tab 也进不去），`.17s ease`，同时从下方 4px 移到位；打开时**列表逐行淡入**（`rpFadeRows()`：每行 22ms 错峰延迟，摘掉 `.in` → 强制回流 → 挂回去重播，`.2s`，超过 8 行统一 176ms）
   - 行动画**只改 `opacity`，绝对不能带 `translateY`**：列表是 `overflow-y:auto` 的滚动容器，行往下平移 3px 就会让 `scrollHeight` 比 `clientHeight` 多 3px，滚动条会在开场那 ~150ms 里闪一下（实测 101 → 104，`offsetWidth-clientWidth` 从 0 跳到 6），动画结束又消失。上下位移统一交给外层面板（`overflow:hidden`，剪掉就完事）
@@ -244,28 +244,30 @@ renpy文档/
   - 生成时把外壳里注入的 `var DOC_ID='<lang>'` 改写成 `''`：这一页不属于任何文档，点任何一份文档都交给宿主判断（否则“点自己”会被当成“已经在这里”）
 - 版式：`div[itemprop="articleBody"]` 撑满一屏（`min-height:100vh`）做成 flex 居中，屏幕正中一块最宽 420px 的「请选择文档」+ 文档列表；每份文档一行卡片（书本图标 + 名字 + 右箭头 / 下载箭头 / 进度圆环），悬停描边变蓝并抬头阴影。六份时整块 420×400、中心 (633,450)，正好是 1280×900 视口的中心（含滚动条留白后的 1265 布局宽度）；名字列 311px，最长的「Ren'Py Nightly Development」约 200px
 - 数据：`FAB` 里 `window.RP_DOCS=DOCS` 把文档表暴露出去，选择页在 `DOMContentLoaded` 后照它建行；打开时再 `fetch('../docs.json')` 补一次真实状态（根目录下 `../docs.json` 解析到 `/docs.json`）
-- **独立页面**：进到选择页时宿主 `SetPickerMode(true)` 把原生标签栏 `tabs.Visible=false`（`NavigationCompleted` 里按 URL 判断 `IsPickerUrl`，`/picker.html` 一样匹配），标签快捷键（Ctrl+T/W/Tab/1-9）也一并停用；右下角只保留主题切换按钮，搜索/收藏/更新/切换文档/设置全部 `display:none`
+- **独立页面**：进到选择页时宿主 `SetPickerMode(true)` 把原生标签栏 `tabs.Visible=false`（`NavigationCompleted` 里按 URL 判断 `IsPickerUrl`，`/picker.html` 一样匹配），标签快捷键（Ctrl+T/W/Tab/1-9）也一并停用；右下角保留主题切换和设置按钮（设置按钮用搜索按钮原来的 `bottom` 位置 `calc(1.4em + 2.2em + .55em)`，搜索/收藏/更新/切换文档隐藏）
 - 进入条件：
   - **在切换文档面板里删掉正在读的那份文档**（4.12）：宿主 `SaveTabs()` → 删目录 → `SetPickerTabs()`（一个标签、地址是选择页）→ 导航过去
   - 启动时当前文档已经没有目录（`CurrentDocAvailable == false`）→ 直接以选择页开局，不再载入那份文档的标签
   - 任何页面加载时发现 `DOCS` 全部在 `rp-docs-gone` 里 → `location.replace('/picker.html')`（选择页自己按 `pathname` 排除，不会循环跳）
-- 从选择页回到文档：点一份已下载的文档 → 页面发 `rp-switch-doc`；宿主发现是**同一份**（重新下载回来的那份）就 `LoadTabs()` 恢复删除时保存的那套标签，直接回它的首页；是别的文档就走正常的切换流程（直接切，没有确认框）
+- 从选择页回到文档：点一份已下载的文档 → 页面发 `rp-switch-doc`；宿主发现是**同一份**（重新下载回来的那份）就直接回它的首页，删除时标签文件已经清掉，不会恢复旧标签；是别的文档就走正常的切换流程（直接切，没有确认框）
 - 坑：主题给 `li`（左 24px）、`ul`（padding-left 19px）和 `li > *`（上下 12px）都塞了 margin，还有 `.rst-content h1` 的 margin-bottom 比单类选择器更“重”——卡片和标题必须用 `#rp-picker …` 前缀再 `margin:0`，否则行会被撑到 76px、标题字号也会被改掉
-- 坑：写进选择页的标签栏必须**不覆盖**删除时保存的那套 —— `SaveTabs()` 里遇到「当前文档不存在 + 只有一个选择页标签」就整段跳过，否则重下载回来时标签就没了
+- 坑：写进选择页的标签栏**不能把删除时清掉的标签写回来** —— `SaveTabs()` 里第一个标签是选择页就整段跳过，否则选择页会重新生成 `tabs-<id>.txt`，重下载后旧标签就复活了
 
 ### 4.11 设置按钮（齿轮）
 
 - 位置：右下角按钮列最上面一个（`#rp-settings-fab`，`bottom:15.15em`），就是原来 `+` 的位置；和切换文档按钮的间距还是 11px（设置 553–597、书本 608–652）
 - 外观：和下面几个按钮**同一个选择器组**——2.2em 圆、`right:1.6em`、`transition:all .3s ease-in-out`、同一套阴影与暗色底色；图标是 Lucide 齿轮线稿（24 viewBox，`stroke-width:2.6`，显示 1.08em）
 - 行为：只在桌面版显示（没有 `chrome.webview` 时按钮 `display:none`）；点击 `postMessage('rp-open-settings')`
-- 弹窗：C# 的 `SettingsDialog(AppSettings current)`，660×649，白色底、34,28 处 18pt 粗体标题，五组设置自上而下（组与组之间统一 24px，标题到控件 28px，复选框之间 28px；只有搜索记录数量 → 软件更新检查这段用 12px，因为 TrackBar 底部带刻度、视觉上本身多占一截）：
-  1. **系统语言设置** — `ComboBox`（`DropDownList`）：简体中文 / 繁體中文 / English / 日本語
+- 空白页：齿轮按钮保留，`picker_body.html` 用 `body #rp-settings-fab{bottom:calc(1.4em + 2.2em + .55em)!important}` 把它放到原来搜索按钮的位置，主题按钮仍在最下面；搜索/收藏/更新/切换文档隐藏
+- 弹窗：C# 的 `SettingsDialog(AppSettings current, string[] docIds, string[] docNames)`，660×773，白色底、34,28 处 18pt 粗体标题，六组设置自上而下（组与组之间统一 28px，标题到控件 28px，复选框之间 28px；只有搜索记录数量 → 文档下载方法这段用 6px，因为 TrackBar 底部带刻度、视觉上本身多占一截）：
+  1. **系统语言设置 (Language)** — `ComboBox`（`DropDownList`）：简体中文 / 繁體中文 / English / 日本語
   2. **文档更新检查** — 勾选「启动时检查文档更新」；下面还有「每天最多检查一次」（`doc-update-daily`，**默认勾选**），勾上后启动检查会在 `%LOCALAPPDATA%\RenPyDocs\doc-check.txt` 里记下当天日期（`yyyy-MM-dd`，本地时间），同一天再启动就跳过（日志 `check: startup skipped (already checked today)`），手动检查不受限制
   3. **关闭清除标签** — 勾选「关闭后清除所有标签页」
   4. **搜索记录数量** — 横向 `TrackBar`，0–10，右侧数字实时跟着滑块走；控制每个文档最多保留几条搜索历史，0 表示不保留（`search-history-max`）
-  5. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/llfseik/RenPy-Docs-Offline-Reader`，留空即用项目默认仓库）+ 勾选「启动时检查软件更新」（`app-update`）+ 勾选「每天最多检查一次」（`app-update-daily`，两项默认开启）；启动时查询 GitHub Release，有新版本时确认后下载合并
+  5. **文档下载方法** — 标题下方 `点击配置` 按钮（160×30，`36,455`，与其他组的标题→控件间距一致）打开 `DownloadMethodsDialog`：660×444，第一行直接是文档，表格每行一份文档，列为「独立 Python / 内嵌浏览器」，每行两个 radio 放在独立 `Panel` 里（WinForms 按容器分组）；保存后写进 `doc-dl-<id>=python|browser`，默认中文两份用 browser、其它用 python
+  6. **软件更新检查** — 网址输入框（`EM_SETCUEBANNER` 灰色提示 `https://github.com/llfseik/RenPy-Docs-Offline-Reader`，留空即用项目默认仓库）+ 勾选「启动时检查软件更新」（`app-update`）+ 勾选「每天最多检查一次」（`app-update-daily`，两项默认开启）；下面还有一个「检查更新」按钮（160×30，`36,643`），不勾选启动检查也能立即检查当前输入框里的网址；启动时查询 GitHub Release，有新版本时确认后下载合并
   底部两个 124×44 的按钮：**取消**（左，`DialogResult.Cancel`）/ **保存**（右，`DialogResult.OK`）。控件的值只在点「保存」时由 `Collect()` 收进 `Result`；取消 / Esc / 关闭窗口都不写文件、不改任何状态
-- 存储：`%LOCALAPPDATA%\RenPyDocs\settings.txt`，八行 `key=value`：`language` / `doc-update` / `doc-update-daily` / `search-history-max` / `app-update` / `app-update-daily` / `app-update-url` / `clear-tabs`。`AppSettings.Load()` 对缺文件、缺键、坏值一律回默认（语言 `zh-CN`、文档更新开、每天一次开、搜索历史 5 条、软件更新开、软件更新每天一次开、清标签关）；旧文件没有 `app-update-daily` 时按新默认迁移为两项都开
+- 存储：`%LOCALAPPDATA%\RenPyDocs\settings.txt`，八行基础 `key=value`：`language` / `doc-update` / `doc-update-daily` / `search-history-max` / `app-update` / `app-update-daily` / `app-update-url` / `clear-tabs`；另外每个文档一行 `doc-dl-<id>=python|browser`（没有就用默认：中文 browser、其它 python）。`AppSettings.Load()` 对缺文件、缺键、坏值一律回默认（语言 `zh-CN`、文档更新开、每天一次开、搜索历史 5 条、软件更新开、软件更新每天一次开、清标签关）；旧文件没有 `app-update-daily` 时按新默认迁移为两项都开
 - 行为（保存后生效）：
   - 语言：`Lang.Set(settings.Language)` 立即切换软件自身的界面语言（所有 `Lang.T(zh, tw, en, ja)` 弹窗、按钮、提示、标签标题）；`settings.txt` 里的值在下次启动时由 `Main()` 先读一次。界面字体也跟着语言走（`Lang.UiFont`）：简中 `Microsoft YaHei UI`、繁中 `Microsoft JhengHei UI`、英语 `Segoe UI`、日语 `Yu Gothic UI`——之前一律用雅黑画英/日/繁中，字体回退后字宽和基线跟按钮中心对不上，按钮文字会偏；换成本地字体后按钮文字重新居中
   - 标签标题：**文档自身的标签**用的是文档页面标题（内容，中文文档就显示中文标题，不随界面语言变）；**应用自己的页面**（搜索 / 收藏 / 请选择文档 / 首页）在 `CleanTitle()` → `KnownPageTitle()` 里映射成当前语言，`DocumentTitleChanged` 也会同步改当前标签（`pendingTitle` 存在时让搜索命中的标签名优先）
@@ -274,7 +276,9 @@ renpy文档/
   - 仍然保持原文的：文档正文、左侧目录、页面标题里的站名（`— Ren'Py 中文文档`）、搜索页的常见主题 chips（它们是中文文档里的检索词）、搜索结果里的章节名和 API 类型标签（索引内容）。底部免责声明四段也进了 `UI_TEXT`（`disc.1`…`disc.4`），由 FAB 脚本在载入时整块重建
   - 文档更新：`StartupChecks()` 先检查软件更新，再调用 `AutoCheckDocumentUpdates()` 按 `doc-update` 检查**当前打开的文档**——`zh-CN` 走 `CheckForUpdates(true)`，其余走 `CheckDocUpdate(id, true)`；和页面上的「检查更新」完全同一条路径：先弹 `BusyForm` 进度窗，检查完弹「当前已是最新版本」/「无需更新」（带「校验完整性」），有新版则弹更新确认框
   - 搜索历史：`PageSettingsScript()` 把 `window.__rpUiLang` 和 `window.__rpSearchHistoryMax` 一起注入；页面 `load/save/remember` 都按 `MAX` 截断，`MAX<=0` 时不再记录、并删掉存储键。保存设置时 `TrimSearchHistoryAsync()` 先遍历 `localStorage` 里所有 `rp-search-history*` 键裁到新上限，再 `Reload()` 当前页（页面载入时也会再裁一次自己的键）
-  - 软件更新：`StartupChecks()` 在启动 0.8 秒后先查 `app-update`，查完（有更新时等弹窗关闭）才走文档检查，所以两者都有更新时软件更新弹窗在前；`app-update-daily` 打开时用 `%LOCALAPPDATA%\RenPyDocs\app-check.txt` 记当天日期（`yyyy-MM-dd`），同一天再启动就跳过（日志 `app-update: startup skipped (already checked today)`），只有检查成功才记日期，离线/失败下次启动会重试。`AppUpdater` 把 GitHub 仓库地址转换成 `api.github.com/repos/<owner>/<repo>/releases/latest`，也支持返回 `{"version":"1.0.1","url":"…","download_url":"…zip"}` 的自定义清单；比较 `AppUpdate.cs` 里的 `CurrentVersion`（1.0.1）。发现新版后确认「立即更新」：`AppUpdateInstaller` 下载 Release 里的 ZIP（优先带 renpy/offline/windows 的资产），解压后写一个 `apply-update.ps1`，等本进程退出后把文件合并进安装目录（**跳过 `site\docs.json`**，保留本地文档目录和版本），再重启 `RenPyDocs.exe`；合并失败写 `%TEMP%\RenPyDocs-update.log`。没有可下载资产时才退回打开下载页面；无更新/无 Release 时启动过程不弹窗
+  - 软件更新：`StartupChecks()` 在启动 0.8 秒后先查 `app-update`，查完（有更新时等弹窗关闭）才走文档检查，所以两者都有更新时软件更新弹窗在前；`app-update-daily` 打开时用 `%LOCALAPPDATA%\RenPyDocs\app-check.txt` 记当天日期（`yyyy-MM-dd`），同一天再启动就跳过（日志 `app-update: startup skipped (already checked today)`），只有检查成功才记日期，离线/失败下次启动会重试。`AppUpdater` 把 GitHub 仓库地址转换成 `api.github.com/repos/<owner>/<repo>/releases/latest`，也支持返回 `{"version":"1.0.1","url":"…","download_url":"…zip"}` 的自定义清单；比较 `AppUpdate.cs` 里的 `CurrentVersion`（1.0.2）。发现新版后确认「立即更新」：`AppUpdateInstaller` 下载 Release 里的 ZIP（优先带 renpy/offline/windows 的资产），解压后写一个 `apply-update.ps1`，等本进程退出后把文件合并进安装目录（**跳过 `site\docs.json`**，保留本地文档目录和版本），再重启 `RenPyDocs.exe`；合并失败写 `%TEMP%\RenPyDocs-update.log`。没有可下载资产时才退回打开下载页面；无更新/无 Release 时启动过程不弹窗
+  - 自更新下载：`AppUpdateInstaller.EnsureDownloadedAsync()` 先探测 `Range: bytes=0-0`，支持分段时按最多 8 段并发（`update-cache\part-N`），`state.txt` 记录 version/sha/etag/total/parts/done，软件重启后按分片已有长度续传；不支持 Range 时回退单连接。GitHub Release 只有一个 `browser_download_url` 且 API `digest` 为 `sha256:` 时，下载失败会依次尝试 ghproxy / gh-proxy / ghfast / moeyy 镜像，合并后校验 SHA256；没有 digest 不启用第三方镜像
+  - 下载源选择：自定义清单里的 `download_url` 是预设地址，直接使用、不测速；没有预设时对 GitHub 和镜像各取 256 KB 样本并发测速，按速度排序后依次尝试，失败自动换下一条
   - 清标签：`clear-tabs` 打开时，`OnFormClosing` 的第二次收尾（`SaveTabs()` 之后）调 `ClearSavedTabs()` 删掉全部 `tabs-*.txt`；`doc.txt` 保留，所以下次启动 `LoadStartupTabs()` 找不到列表，只开**当前文档的首页**
 - 语言覆盖范围：`Program.cs` 的弹窗/按钮/提示，以及页面侧 `UI_TEXT` 字典覆盖的悬浮按钮、切换面板、搜索页 / 收藏页 / 选择页和底部免责声明；文档正文、目录、文档标签标题保持原文
 - 旧「测试」入口连同 `#rp-test-panel`、`TESTS` 数组、`rp-open-tab` 的页面侧调用一起删掉了（`rp-open-tab` 仍留给搜索命中开标签用）
@@ -283,8 +287,8 @@ renpy文档/
 
 - 点删除状态里的垃圾桶 → 页面 postMessage `rp-confirm-delete\n<id>\n<名字>`；宿主 `Program.cs` 在 `BeginInvoke` 里弹 `ConfirmDialog`（新加的类，布局照 `UpdateDialog` / `InfoDialog`：`FixedDialog`、白底、`Microsoft YaHei UI`、660×330，标题 18pt 加粗在 (34,28)，正文 11.5pt 在 (36,88)，124×44 的大按钮在 y=250）
 - 两个按钮：**删除**（左，`DialogResult.OK`）/ **取消**（右，`DialogResult.Cancel`），和更新提示里「确认 / 取消」的位置一致；`AcceptButton = CancelButton = 取消`，回车和 Esc 都只会取消
-- 选「删除」→ 宿主 `DeleteDocFiles()` 删掉 `site/<id>` 再 `WriteDocsJson()`；删的是**别的**文档就 `ExecuteScriptAsync("window.__rpDocDeleted(<id>)")`，让面板上那一行原地变成「未下载」；删的正是**当前**文档则 `SaveTabs()` → `SetPickerTabs()` → 导航到根目录的空白选择页（4.10）。选「取消」/ 关窗口什么都不做
-  - 文案：别的文档「是否要删除「<名字>」？浏览数据将会保留」；**正在用的**那份「本文档「<名字>」正在使用，是否删除？浏览数据将会保留」（删完会回到「请选择文档」页）；页面没带名字时退回「此文档」/「本文档」
+- 选「删除」→ 宿主 `DeleteDocFiles()` 删掉 `site/<id>` 再 `WriteDocsJson()`，然后 `DeleteTabsForDoc()` 删掉 `tabs-<id>.txt`（zh-CN 顺带删旧版全局 `tabs.txt`）；删的是**别的**文档就 `ExecuteScriptAsync("window.__rpDocDeleted(<id>)")`，让面板上那一行原地变成「未下载」；删的正是**当前**文档则 `SetPickerTabs()` → 导航到根目录的空白选择页（4.10）。选「取消」/ 关窗口什么都不做
+  - 文案：别的文档「是否要删除「<名字>」？除标签页外的数据（历史记录、收藏等）会保留」；**正在用的**那份「本文档「<名字>」正在使用，是否删除？除标签页外的数据（历史记录、收藏等）会保留」（删完会回到「请选择文档」页）；页面没带名字时退回「此文档」/「本文档」
   - 正在下载的那份要删，先 `CancelDownload()`（`taskkill /T /F`），否则后台 python 会把目录再写回来
   - 删除失败（文件被占用）会弹 `InfoDialog`「删除失败」/「请稍后重试」，不动任何状态
 - 页面侧只在桌面宿主里走原生框（`window.chrome.webview` 存在时），浏览器里退回 `window.confirm()` 仅作调试用；旧的网页版卡片弹窗（`#rp-confirm`）已整块删除，不留余代码
@@ -314,11 +318,11 @@ renpy文档/
   - `en-nightly-fix` Ren'Py Nightly Fix → `https://nightly.renpy.org/current-8-fix/doc/`
   - `en-nightly` Ren'Py Nightly Development → `https://nightly.renpy.org/current-8/doc/`
 - `build.py` 把目录写进 `site/docs.json`（`id / name / site / home / version / downloaded`）；`FAB` 里的 `var DOCS=[…]` 是同一份表的精简版（`cur/dl/version`），所以**每次改目录都要重跑 `build.ps1`**，把六份文档的页面里那段 JS 一起更新
-- 没下载的文档 `dl:false`，面板 / 选择页显示下载箭头；点一下走 `download_doc.py`，它按 `site/docs.json` 里该文档的 `site` 决定抓哪个站（`DOCS` 字典只是没有 `docs.json` 时的兜底，里面也补了六个）
+- 没下载的文档 `dl:false`，面板 / 选择页显示下载箭头；点一下通常走 `download_doc.py`，它按 `site/docs.json` 里该文档的 `site` 决定抓哪个站（`DOCS` 字典只是没有 `docs.json` 时的兜底，里面也补了六个）。**doc.renpy.cn 的两份中文文档直接走内嵌浏览器**：爬虫抓完 112 页后必被浏览器校验拦下，再切换只会把半成品清掉重下，所以 `UseBrowserDownload()` 一开始就选 `DownloadWithBrowser()`，进度从 0 到 100 一条线
 - 抓到的文档一律落在 `site/<id>/`，与 `zh-CN` 平级；`build.ps1` 只重建**磁盘上存在**的文档目录（`Test-Path site\<id>\index.html`），所以没下载的那几份不会凭空出现
 - 每份文档自己的 `version.txt` / `build.txt`：`build.py` 先从侧栏 `(\d+\.\d+\.\d+)[^<]{0,12}(说明文档首页|說明文件首頁)` 取版本（中文、繁中），取不到再读该文档的 `_static/documentation_options.js` 的 `VERSION`（英文 / 日文 / 每夜版都准，只有 doc.renpy.cn 那份是 2024 年的死数据），最后才用旧的 `version.txt`
 - 「检查更新」对**当前文档**做，版本与构建时间两个信号都比：非 `zh-CN` 的文档走 `CheckDocUpdate(id)`，站点地址取自 `docs.json` 的 `site`，同样 GET 首页拿 `Last-Modified`（页面里若有侧栏版本就一起拿），失败再 `FetchBuildAsync()` 对 `searchindex.js` / `index.html` 发 `HEAD`，最后才读 `_static/documentation_options.js` 的版本。这条路径现在也有和中文文档一样的进度窗（`BusyForm` 的 `Continuous` 模式，`FetchSiteInfoAsync(site, report)` 每进入一步就 `report(文案, 百分数)`）
-- 站点要求浏览器校验时（doc.renpy.cn 的两个中文站都可能），`PollDownload()` 看到进度文件里「浏览器校验」就改用 `DownloadWithBrowser(id)`：`SiteUpdater` 现在接 `(appRoot, docId, siteUrl, …)`，用隐藏 WebView2 抓同一份文档，`build.py` 也按 `docId` 重建（`RunBuilder` 把文档 id 传给 `build.py` 的第三个参数）
+- 站点要求浏览器校验时（doc.renpy.cn 的两个中文站都会，所以它们直接走浏览器；其它站偶发时），`PollDownload()` 看到进度文件里「浏览器校验」就改用 `DownloadWithBrowser(id)`：`SiteUpdater` 现在接 `(appRoot, docId, siteUrl, …)`，用隐藏 WebView2 抓同一份文档，`build.py` 也按 `docId` 重建（`RunBuilder` 把文档 id 传给 `build.py` 的第三个参数）
 - 繁中的侧栏是「8.5.4 說明文件首頁」，日文站标题里的 `Ren&#39;Py` 是 HTML 实体：`fetch_en.crawl()` 判断“是不是挑战页”前要先 `html.unescape(title)`，否则会把正常页面当成校验页拒掉（这次加日文时踩到的）
 
 ---
@@ -354,6 +358,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app\tools\build.ps1
 > 测试约定：**不在用户桌面上启动 RenPyDocs.exe 做使用测试**；页面/脚本用 headless Edge 跑，窗体布局用离屏 `DrawToBitmap` 或只读控件位置。真实的“点一遍”使用测试由用户完成。
 
 快捷方式的 `TargetPath` / `IconLocation` 都是绝对路径，**目录一旦被移动或改名就会失效**（图标变空白、双击报错）。构建脚本每次都按当前目录重写这两份 `.lnk`，所以搬动目录后跑一次 `build.ps1` 即可自愈。
+
+发布目录还要带 `app.ico`：`MainForm` 启动时从 `BaseDirectory\app.ico` 读窗口/任务栏图标；缺文件时现在会退回 exe 的嵌入图标（`Icon.ExtractAssociatedIcon`，32px），不会显示空白。exe 文件本身的图标由 `csc /win32icon` 嵌入，和窗口图标是两条路。
 
 注意：`build.ps1` **必须带 UTF-8 BOM 保存**，否则 PowerShell 5.1 按 ANSI 读取，中文快捷方式名会变成乱码。
 
@@ -440,8 +446,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app\tools\build.ps1
 - 目录：`app\site\zh-CN\`（doc.renpy.cn）和 `app\site\en\`（www.renpy.org/doc/html），各自是一份完整的 Sphinx 镜像；`site\docs.json` 由 `build.py` 生成，桌面端启动时读它拿文档列表、首页和版本
 - 英文镜像：`python updater/fetch_en.py site/en` 抓取（106 页 + 95 个资源，约 19.8 MB）。除了 HTML 里出现的资源，它还会顺着 CSS 的 `url()` 把字体（FontAwesome / Lato / Roboto Slab）抓下来——只抓 HTML 里的资源会缺字体，所有图标都变成方框
 - 构建：`python updater/build.py site updater/search_body.html <lang>`，`build.ps1` 把 `zh-CN` 和 `en` 各跑一遍；每份文档有自己的 `search-index.js` / `search.html` / `favorites.html` / `version.txt`。**空白选择页只有站点根目录一份**（`site/picker.html`），每次构建都重写，并把外壳那份 `_static` 复制到 `site/_static`
-- 删除文档：面板里点垃圾桶 → `rp-confirm-delete` → 宿主删 `site/<id>`、重写 `docs.json`。删的是当前文档时先存标签再删，删完直接进空白选择页（`SetPickerTabs()`）；重下载回来后点它，`SwitchDocument()` 发现是同一份就 `LoadTabs()` 把标签恢复出来
-- `SaveTabs()` 有个守卫：当前文档不存在、且内存里只剩那一个选择页标签时整段跳过——否则选择页会把删除时保存的标签集覆盖掉（自检 `tools/SelfTest.cs` 里专门验这条）
+- 删除文档：面板里点垃圾桶 → `rp-confirm-delete` → 宿主删 `site/<id>`、`tabs-<id>.txt`、重写 `docs.json`。删的是当前文档时删完直接进空白选择页（`SetPickerTabs()`）；重下载回来后点它从首页打开，旧标签不会恢复
+- `SaveTabs()` 有个守卫：第一个标签是选择页就整段跳过——否则选择页会把刚删掉的 `tabs-<id>.txt` 又写回来（自检 `tools/SelfTest.cs` 里专门验这条）
 - 页面身份：每个页面 `<head>` 里注入 `window.RP_DOC_ID`，`FAB` 里的 `DOCS`（`__RP_DOCS_JS__`）由构建时填好，当前那份是 `cur:true`
 - 数据隔离（localStorage 键加文档后缀）：收藏 `rp-favorites:<id>`、搜索历史 `rp-search-history:<id>`；老版本的单键在第一次打开时自动搬到 `zh-CN` 那份
 - 标签页：`%LOCALAPPDATA%\RenPyDocs\tabs-<id>.txt`，当前文档记在 `doc.txt`；老的 `tabs.txt` 启动时改名成 `tabs-zh-CN.txt`
@@ -450,16 +456,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app\tools\build.ps1
 - 图标：**顶部导航用 FontAwesome 字形**（`fa fa-arrow-left` / `fa-home` / `fa-arrow-right`），**右下角悬浮按钮用内联 SVG**（描边 2.6，书/加号/刷新/放大镜/药瓶/月亮/太阳）；英文页最初图标变方框其实是缺字体文件，`fetch_en.py` 把 `fontawesome-webfont.*` 抓下来后 FA 也能用，但那一版 SVG 更受用，所以两边分开放
 - 已知取舍：英文 / 日文 / 每夜版文档里我们的功能页（搜索 / 收藏 / 切换面板）文案仍是中文；「检查更新」六份都能用（`zh-CN` 走整包更新，其余走 `CheckDocUpdate(id)` 按文档站点比对版本 + 构建时间）
 - `rp-switch-doc` 也是 `BeginInvoke` 里再弹对话框：在消息回调里直接 `ShowDialog` 会把 WebView 的消息泵堵住
-- 除中文外的五份文档默认**不打进发布包**（`app\site` 里只有 `zh-CN`，整包约 54 MB）：切换文档面板和空白选择页上，没下载的文档右侧显示下载按钮（箭头落盘图标），点一下 `rp-doc-download\n<id>` → 宿主用内嵌 python 跑 `download_doc.py <site> <id> …`，全程在后台进程里，当前页面不刷新、可继续阅读
+- 除中文外的五份文档默认**不打进发布包**（`app\site` 里只有 `zh-CN`，整包约 54 MB）：切换文档面板和空白选择页上，没下载的文档右侧显示下载按钮（箭头落盘图标），点一下 `rp-doc-download\n<id>` → 宿主按该文档的下载方法（设置里的 `doc-dl-<id>`）选后台 `download_doc.py` 或内嵌 `SiteUpdater`，当前页面不刷新、可继续阅读
   - 下载中行内显示「下载中…」；页面每 2.5 秒拉一次 `../docs.json`（最多 240 次）看 `downloaded` 变没变，宿主完成时也会调 `window.__rpDocReady(id)` / `__rpDocFailed(id)` 立即刷新那一行
   - `docs.json` 的 `downloaded` 由构建时「目录里有没有 index.html」决定；`FAB` 的 `DOCS` 里也带了 `dl` / `version`，所以面板第一次画就有正确状态
   - 未下载的文档点行本身不会切换（只有右边的下载按钮能用），避免切到不存在的页面
   - 浏览器里没有下载器：下载按钮退回直接打开线上文档
-- 下载时会弹一个和「检查更新」同款的进度窗（`ProgressForm`，标题「正在下载文档」、按钮「取消下载」、`CenterOn` 居中、任务栏进度同步）：进度来自爬虫 stdout 的 `pages a/b`（5%→60%）、`assets n`（62%→88%）、`css refs`（90%），重建索引 92%，完成 100%
+- 下载时会弹一个和「检查更新」同款的进度窗（`ProgressForm`，标题「正在下载文档」、按钮「取消下载」、`CenterOn` 居中、任务栏进度同步）：非中文文档的进度来自爬虫 stdout 的 `pages a/b`（5%→60%）、`assets n`（62%→88%）、`css refs`（90%），重建索引 92%，完成 100%；中文文档走 `SiteUpdater` 的页面/资源回调（5%→60%→90%→100%）
   - 取消：`CancelRequested` → 杀掉 python 子进程 → 删掉 `site/en` 半成品 → 页面那一行退回下载按钮（`__rpDocFailed`）
   - 关掉阅读器时也会 kill 子进程，否则孤儿 python 会在后台继续把 `site/en` 写回来（这次调试就踩到了，en 目录自己长回来）
   - `ProgressForm` 多了 `(title, cancelText)` 构造，更新流程还是用默认的「正在更新文档 / 取消更新」
-- 下载现在是**脱离窗口的独立进程**：`updater/download_doc.py`（内部调用 `fetch_en.crawl` + `build.py`），宿主只负责启动它、每 0.5 秒读 `%LOCALAPPDATA%\RenPyDocs\download-<id>.txt`（三行：百分比 / 文案 / running|done|failed）并推给页面；关掉软件、切文档、切标签都不会中断，下次启动 `ResumeDownloadWatch()` 会把还在跑的进度接回来
+- 下载现在是**脱离窗口的独立进程**：`updater/download_doc.py`（内部调用 `fetch_en.crawl` + `build.py`），宿主只负责启动它、每 0.5 秒读 `%LOCALAPPDATA%\RenPyDocs\download-<id>.txt`（三行：百分比 / 文案 / running|done|failed）并推给页面；关掉软件、切文档、切标签都不会中断，下次启动 `ResumeDownloadWatch()` 会把还在跑的进度接回来。**默认中文两份走内嵌浏览器**（`UseBrowserDownload()` 按设置判断，`doc-dl-zh-CN`/`doc-dl-zh-TW` 默认 browser），避免抓完页面被校验后清掉重下，这条需要软件开着；其它文档默认独立进程，也可以在设置里改成浏览器
   - **一份文档一个站点**：`download_doc.py` 先读 `site/docs.json` 里该文档的 `site`（`build.py` 从 `CATALOG` 写进去的，见 4.14），读不到才用文件里的 `DOCS` 兜底表。以前这里写死了 `fetch_en`，所以“重新下载中文文档”抓的是英文站，写进 `site/zh-CN` 就成了英文内容（那一版修掉的）
   - 六份文档都是同一个 Sphinx 结构，所以共用一个爬虫 `fetch_en.crawl(out, report, wait, base)`；`base` 换成对应站点即可（主机和目录不同而已，见 4.14），首页 title 里的 `Ren’Py` 是弯引号、英文站还带 HTML 实体（`Ren&#39;Py`），校验前要 `html.unescape` 再归一化
   - 站点偶尔会返回浏览器校验页：`crawl()` 抓完首页就检查 title，命中就抛 `BlockedError`，`download_doc.py` 以退出码 9 + 文案「网站要求浏览器校验…」写 failed；宿主 `PollDownload()` 看到这段文案就改用内嵌浏览器下载（`DownloadWithBrowser(id)` → `SiteUpdater`），这条路一定能过校验，但**必须开着软件**。`SiteUpdater` 现在接 `(appRoot, docId, siteUrl, …)`，任意文档都能走
@@ -490,7 +496,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app\tools\build.ps1
   - 下载按钮 / 圆环就放在**左边打勾那个槽**（`.rp-doc-ico`，宽 2.05em，里面叠着 ✓、垃圾桶和一个 `.rp-doc-dlc` 容器）；没下载的行名字变灰（`.rp-doc-item.nodl .rp-doc-name`），右边不再有按钮，只留给版本号
   - 点左边的下载箭头开始下载；下载中那个位置变成圆环，点圆环暂停/继续（`rp-doc-pause` / `rp-doc-resume`）
   - **删除模式**（滑块拨到垃圾桶）会把下载箭头**淡出**（`.rp-docs-list.del .rp-doc-dlc .rp-doc-dl{opacity:0;visibility:hidden;pointer-events:none}`，`.2s ease-in-out`，和 √ ↔ 垃圾桶同一时长、同一缓动；拨回来再淡入），否则那个箭头正压在垃圾桶上、点是点不了删除的；**正在下载的圆环不藏**，照样看得见、照样能点暂停/继续。圆环占着这一格时，垃圾桶跟着退场（`.rp-doc-item.busy .rp-doc-del` 透明 + `pointer-events:none`），免得两个图标叠在一起
-- 无头自检：`app\tools\SelfTest.cs`（不参与正式构建）用 `/main:RenPyDocs.SelfTest` 单独编译，构造 `MainForm` 但不显示窗口，验证「每份文档一个标签文件、A 存的标签在 B 里读不到、切回 A 原样恢复、HomeUrl 指向各自首页、文档不在磁盘上时 HomeUrl 落到选择页、`SaveTabs()` 不覆盖删除时保存的标签」；删当前文档那段跑在 `%TEMP%` 的临时站点上（用反射临时换掉 `root`），不碰真实 `site`。跑完自己删掉测试用的 `tabs-test-*.txt`：
+- 无头自检：`app\tools\SelfTest.cs`（不参与正式构建）用 `/main:RenPyDocs.SelfTest` 单独编译，构造 `MainForm` 但不显示窗口，验证「每份文档一个标签文件、A 存的标签在 B 里读不到、切回 A 原样恢复、HomeUrl 指向各自首页、文档不在磁盘上时 HomeUrl 落到选择页、删除文档时标签文件被删掉且 `SaveTabs()` 不会把它写回来」；删当前文档那段跑在 `%TEMP%` 的临时站点上（用反射临时换掉 `root`），不碰真实 `site`。跑完自己删掉测试用的 `tabs-test-*.txt`：
   ```
   csc /target:exe /platform:x64 /main:RenPyDocs.SelfTest /out:_selftest.exe ^
       /r:System.Windows.Forms.dll /r:System.Drawing.dll              ^

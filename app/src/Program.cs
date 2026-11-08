@@ -131,6 +131,26 @@ namespace RenPyDocs
         public bool AppUpdateDaily = true;
         public string AppUpdateUrl = "";
         public bool ClearTabsOnExit = false;
+        // per-document download path: "python" (detached crawler) or
+        // "browser" (the hidden WebView2). Missing entries use sensible
+        // defaults; the Chinese hosts default to the browser because their
+        // crawler always runs into the browser check.
+        public Dictionary<string, string> DocDownloadMethods =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public string DocDownloadMethod(string id)
+        {
+            string method;
+            if (id != null && DocDownloadMethods.TryGetValue(id, out method))
+            {
+                method = (method ?? "").ToLowerInvariant();
+                if (method == "python" || method == "browser") return method;
+            }
+            if (string.Equals(id, "zh-CN", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(id, "zh-TW", StringComparison.OrdinalIgnoreCase))
+                return "browser";
+            return "python";
+        }
 
         private static readonly string FilePath =
             Path.Combine(AppPaths.DataDir, "settings.txt");
@@ -148,6 +168,14 @@ namespace RenPyDocs
                     if (eq <= 0) continue;
                     string key = line.Substring(0, eq).Trim();
                     string val = line.Substring(eq + 1).Trim();
+                    if (key.StartsWith("doc-dl-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string id = key.Substring(7).Trim();
+                        string method = val.ToLowerInvariant();
+                        if (id.Length > 0 && (method == "python" || method == "browser"))
+                            s.DocDownloadMethods[id] = method;
+                        continue;
+                    }
                     switch (key)
                     {
                         case "language":
@@ -192,15 +220,26 @@ namespace RenPyDocs
                 string dir = Path.GetDirectoryName(FilePath);
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                 string nl = Environment.NewLine;
-                File.WriteAllText(FilePath,
-                    "language=" + Language + nl +
-                    "doc-update=" + (DocUpdateOnStart ? "1" : "0") + nl +
-                    "doc-update-daily=" + (DocUpdateDaily ? "1" : "0") + nl +
-                    "search-history-max=" + SearchHistoryMax + nl +
-                    "app-update=" + (AppUpdateOnStart ? "1" : "0") + nl +
-                    "app-update-daily=" + (AppUpdateDaily ? "1" : "0") + nl +
-                    "app-update-url=" + AppUpdateUrl + nl +
-                    "clear-tabs=" + (ClearTabsOnExit ? "1" : "0") + nl);
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("language=").Append(Language).Append(nl);
+                sb.Append("doc-update=").Append(DocUpdateOnStart ? "1" : "0").Append(nl);
+                sb.Append("doc-update-daily=").Append(DocUpdateDaily ? "1" : "0").Append(nl);
+                sb.Append("search-history-max=").Append(SearchHistoryMax).Append(nl);
+                sb.Append("app-update=").Append(AppUpdateOnStart ? "1" : "0").Append(nl);
+                sb.Append("app-update-daily=").Append(AppUpdateDaily ? "1" : "0").Append(nl);
+                sb.Append("app-update-url=").Append(AppUpdateUrl).Append(nl);
+                sb.Append("clear-tabs=").Append(ClearTabsOnExit ? "1" : "0").Append(nl);
+                foreach (KeyValuePair<string, string> pair in DocDownloadMethods)
+                {
+                    if (string.IsNullOrEmpty(pair.Key) ||
+                        pair.Key.IndexOfAny(new char[] { '=', '\r', '\n' }) >= 0)
+                        continue;
+                    string method = (pair.Value ?? "").ToLowerInvariant();
+                    if (method != "python" && method != "browser") continue;
+                    sb.Append("doc-dl-").Append(pair.Key).Append('=').
+                       Append(method).Append(nl);
+                }
+                File.WriteAllText(FilePath, sb.ToString());
             }
             catch (Exception) { }
         }
@@ -254,7 +293,18 @@ namespace RenPyDocs
             try
             {
                 string icon = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico");
-                if (File.Exists(icon)) Icon = new Icon(icon);
+                if (File.Exists(icon))
+                {
+                    Icon = new Icon(icon);
+                }
+                else
+                {
+                    // A release folder may not carry app.ico; the exe already has
+                    // the same icon embedded, so use that instead of a blank one.
+                    System.Drawing.Icon embedded =
+                        System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                    if (embedded != null) Icon = embedded;
+                }
             }
             catch (Exception)
             {
@@ -373,7 +423,14 @@ namespace RenPyDocs
                         BeginInvoke((Action)(() =>
                         {
                             if (IsDisposed) return;
-                            using (SettingsDialog dlg = new SettingsDialog(settings))
+                            string[] docIds = new string[docs.Count];
+                            string[] docNames = new string[docs.Count];
+                            for (int i = 0; i < docs.Count; i++)
+                            {
+                                docIds[i] = docs[i].Id;
+                                docNames[i] = docs[i].Name;
+                            }
+                            using (SettingsDialog dlg = new SettingsDialog(settings, docIds, docNames))
                             {
                                 if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result == null)
                                     return;      // 取消: nothing is written
@@ -450,24 +507,24 @@ namespace RenPyDocs
                                 string body = current
                                     ? (name.Length > 0
                                         ? string.Format(Lang.T(
-                                            "本文档「{0}」正在使用，是否删除？浏览数据将会保留",
-                                            "本文件「{0}」正在使用，是否刪除？瀏覽資料將會保留",
-                                            "This document ({0}) is open. Delete it? Browsing data will be kept.",
-                                            "「{0}」は使用中です。削除しますか？閲覧データは保持されます。"), name)
-                                        : Lang.T("本文档正在使用，是否删除？浏览数据将会保留",
-                                                 "本文件正在使用，是否刪除？瀏覽資料將會保留",
-                                                 "This document is open. Delete it? Browsing data will be kept.",
-                                                 "この文書は使用中です。削除しますか？閲覧データは保持されます。"))
+                                            "本文档「{0}」正在使用，是否删除？除标签页外的数据（历史记录、收藏等）会保留",
+                                            "本文件「{0}」正在使用，是否刪除？除標籤頁外的資料（歷史記錄、收藏等）會保留",
+                                            "This document ({0}) is open. Delete it? Everything except its tabs (history, favourites, etc.) will be kept.",
+                                            "「{0}」は使用中です。削除しますか？タブ以外のデータ（履歴、お気に入りなど）は保持されます。"), name)
+                                        : Lang.T("本文档正在使用，是否删除？除标签页外的数据（历史记录、收藏等）会保留",
+                                                 "本文件正在使用，是否刪除？除標籤頁外的資料（歷史記錄、收藏等）會保留",
+                                                 "This document is open. Delete it? Everything except its tabs (history, favourites, etc.) will be kept.",
+                                                 "この文書は使用中です。削除しますか？タブ以外のデータ（履歴、お気に入りなど）は保持されます。"))
                                     : (name.Length > 0
                                         ? string.Format(Lang.T(
-                                            "是否要删除「{0}」？浏览数据将会保留",
-                                            "是否要刪除「{0}」？瀏覽資料將會保留",
-                                            "Delete {0}? Browsing data will be kept.",
-                                            "「{0}」を削除しますか？閲覧データは保持されます。"), name)
-                                        : Lang.T("是否要删除此文档？浏览数据将会保留",
-                                                 "是否要刪除此文件？瀏覽資料將會保留",
-                                                 "Delete this document? Browsing data will be kept.",
-                                                 "この文書を削除しますか？閲覧データは保持されます。"));
+                                            "是否要删除「{0}」？除标签页外的数据（历史记录、收藏等）会保留",
+                                            "是否要刪除「{0}」？除標籤頁外的資料（歷史記錄、收藏等）會保留",
+                                            "Delete {0}? Everything except its tabs (history, favourites, etc.) will be kept.",
+                                            "「{0}」を削除しますか？タブ以外のデータ（履歴、お気に入りなど）は保持されます。"), name)
+                                        : Lang.T("是否要删除此文档？除标签页外的数据（历史记录、收藏等）会保留",
+                                                 "是否要刪除此文件？除標籤頁外的資料（歷史記錄、收藏等）會保留",
+                                                 "Delete this document? Everything except its tabs (history, favourites, etc.) will be kept.",
+                                                 "この文書を削除しますか？タブ以外のデータ（履歴、お気に入りなど）は保持されます。"));
                                 bool ok;
                                 using (ConfirmDialog dlg = new ConfirmDialog(
                                     Lang.T("删除文档", "刪除文件", "Delete document", "文書を削除"),
@@ -479,9 +536,9 @@ namespace RenPyDocs
 
                                 // never pull the folder from under a running download
                                 if (dlId == id) CancelDownload();
-                                // keep the tab set: it comes back if the document
-                                // is downloaded again
-                                if (current) SaveTabs();
+                                // tabs are the only data that goes with the
+                                // document; favourites and search history live
+                                // in localStorage and are left alone
 
                                 bool gone = DeleteDocFiles(id);
                                 if (!gone)
@@ -498,6 +555,8 @@ namespace RenPyDocs
                                         hint.ShowDialog(this);
                                     return;
                                 }
+
+                                DeleteTabsForDoc(id);
 
                                 if (current)
                                 {
@@ -1176,8 +1235,8 @@ namespace RenPyDocs
         }
 
         // ------------------------------------------------------ delete
-        // Removing a document only touches site/<id>: the tabs, favourites and
-        // search history of that document stay where they are.
+        // Removing a document only touches site/<id> and its tab list: the
+        // favourites, search history and browsing data of that document stay.
         private bool DeleteDocFiles(string id)
         {
             try
@@ -1195,6 +1254,26 @@ namespace RenPyDocs
             WriteDocsJson();
             LoadDocs();
             return true;
+        }
+
+        private void DeleteTabsForDoc(string id)
+        {
+            try
+            {
+                string file = Path.Combine(TabsDir, "tabs-" + id + ".txt");
+                if (File.Exists(file)) File.Delete(file);
+                // pre-1.0.0 builds used one global tabs.txt for zh-CN
+                if (string.Equals(id, "zh-CN", StringComparison.OrdinalIgnoreCase))
+                {
+                    string legacy = Path.Combine(TabsDir, "tabs.txt");
+                    if (File.Exists(legacy)) File.Delete(legacy);
+                }
+                Log("tabs: deleted for " + id);
+            }
+            catch (Exception ex)
+            {
+                Log("tabs: delete failed for " + id + ": " + ex.Message);
+            }
         }
 
         // "8.5.4" for a document folder that carries version.txt, else its
@@ -1348,6 +1427,12 @@ namespace RenPyDocs
             DownloadDocument(id, false);
         }
 
+        private bool UseBrowserDownload(Doc d)
+        {
+            if (d == null || string.IsNullOrEmpty(d.Site)) return false;
+            return settings.DocDownloadMethod(d.Id) == "browser";
+        }
+
         private void DownloadDocument(string id, bool update)
         {
             if (dlId != null) return;
@@ -1355,6 +1440,16 @@ namespace RenPyDocs
             Doc d = FindDoc(id);
             if (d == null) return;
             if (!update && File.Exists(Path.Combine(root, id, "index.html"))) return;
+
+            // per-document setting. The Chinese hosts default to the browser
+            // because their crawler always runs into the browser check; any
+            // other document can be switched to the browser in Settings too.
+            if (UseBrowserDownload(d))
+            {
+                Log("doc: " + id + " download start (browser direct " + d.Site + ")");
+                DownloadWithBrowser(id);
+                return;
+            }
 
             // both documents are the same Sphinx build on different hosts, so
             // the detached crawler handles both; only when the Chinese host
@@ -1445,7 +1540,6 @@ namespace RenPyDocs
             }
             catch (Exception) { }
 
-            dlLast = pct;
             if (state == "done")
             {
                 EndWatch(true);
@@ -1464,12 +1558,11 @@ namespace RenPyDocs
                 return;
             }
 
-            ReportProgress(id, pct, dlPaused);
-            if (dlForm != null)
-                dlForm.Report(dlPaused
-                    ? Lang.T("已暂停", "已暫停", "Paused", "一時停止中")
-                    : (text ?? Lang.T("正在下载…", "正在下載…",
-                                      "Downloading…", "ダウンロード中…")), pct);
+            string label = dlPaused
+                ? Lang.T("已暂停", "已暫停", "Paused", "一時停止中")
+                : (text ?? Lang.T("正在下载…", "正在下載…",
+                                  "Downloading…", "ダウンロード中…"));
+            ShowDownloadProgress(dlForm, id, label, pct, dlPaused);
         }
 
         // a detached download that failed has no window of its own any more, so
@@ -1508,6 +1601,19 @@ namespace RenPyDocs
             catch (Exception) { }
         }
 
+        // the popup and the ring must always show the same value: clamp here,
+        // feed both, and never let a restarted crawler pull the UI backwards
+        private void ShowDownloadProgress(ProgressForm form, string id,
+                                          string text, int pct, bool paused)
+        {
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            if (pct < dlLast) pct = dlLast;
+            dlLast = pct;
+            if (form != null) form.Report(text, pct);
+            ReportProgress(id, pct, paused);
+        }
+
         private void SetDownloadPaused(string id, bool paused)
         {
             if (dlId == null || id != dlId) return;
@@ -1524,12 +1630,11 @@ namespace RenPyDocs
             }
             catch (Exception) { }
             dlPaused = paused;
-            ReportProgress(id, dlLast, paused);
-            if (dlForm != null)
-                dlForm.Report(paused
-                    ? Lang.T("已暂停", "已暫停", "Paused", "一時停止中")
-                    : Lang.T("正在继续…", "正在繼續…",
-                             "Resuming…", "再開中…"), dlLast);
+            string label = paused
+                ? Lang.T("已暂停", "已暫停", "Paused", "一時停止中")
+                : Lang.T("正在继续…", "正在繼續…",
+                         "Resuming…", "再開中…");
+            ShowDownloadProgress(dlForm, id, label, dlLast, paused);
         }
 
         private void CancelDownload()
@@ -1627,8 +1732,9 @@ namespace RenPyDocs
             catch (Exception) { }
         }
 
-        // Fallback for a site that answers the crawler with its browser check:
-        // fetch it here in-process (SiteUpdater + a hidden WebView2) because only
+        // Used directly for doc.renpy.cn (it always trips its browser check) and
+        // as a fallback for other sites that answer the crawler with a check.
+        // Fetch it here in-process (SiteUpdater + a hidden WebView2) because only
         // a real browser gets past that check. Pausing still works: the pause
         // file is polled between pages.
         private async void DownloadWithBrowser(string id)
@@ -1668,11 +1774,10 @@ namespace RenPyDocs
                 ProgressForm form = progress;
                 Action<string, int> report = delegate(string text, int pct)
                 {
-                    dlLast = pct;
-                    form.Report(dlPaused
+                    string label = dlPaused
                         ? Lang.T("已暂停", "已暫停", "Paused", "一時停止中")
-                        : text, pct);
-                    ReportProgress(id, pct, dlPaused);
+                        : text;
+                    ShowDownloadProgress(form, id, label, pct, dlPaused);
                 };
 
                 Func<Task> tick = async delegate
@@ -1684,9 +1789,9 @@ namespace RenPyDocs
                         {
                             paused = true;
                             dlPaused = true;
-                            form.Report(Lang.T("已暂停", "已暫停",
-                                               "Paused", "一時停止中"), dlLast);
-                            ReportProgress(id, dlLast, true);
+                            ShowDownloadProgress(form, id,
+                                Lang.T("已暂停", "已暫停", "Paused", "一時停止中"),
+                                dlLast, true);
                         }
                         if (cts.IsCancellationRequested) break;
                         await Task.Delay(250);
@@ -1694,9 +1799,9 @@ namespace RenPyDocs
                     if (paused)
                     {
                         dlPaused = false;
-                        form.Report(Lang.T("正在继续…", "正在繼續…",
-                                           "Resuming…", "再開中…"), dlLast);
-                        ReportProgress(id, dlLast, false);
+                        ShowDownloadProgress(form, id,
+                            Lang.T("正在继续…", "正在繼續…",
+                                   "Resuming…", "再開中…"), dlLast, false);
                     }
                 };
 
@@ -1807,10 +1912,10 @@ namespace RenPyDocs
 
         private void SaveTabs()
         {
-            // the picker tab set (a single blank page) must not overwrite the
-            // set that was saved when the document was deleted: it comes back
-            // if that document is downloaded again
-            if (!CurrentDocAvailable && tabs.Tabs.Count == 1 && IsPickerUrl(tabs.Tabs[0].Url))
+            // the one-tab picker page is never a document's tab set: do not
+            // write it back, or a deleted/re-downloaded document would get a
+            // stale picker tab instead of opening its home page
+            if (tabs.Tabs.Count > 0 && IsPickerUrl(tabs.Tabs[0].Url))
                 return;
 
             try
@@ -3197,12 +3302,22 @@ namespace RenPyDocs
         private readonly CheckBox appDaily;
         private readonly TrackBar searchMax;
         private readonly CheckBox clearTabs;
+        private readonly string[] docIds;
+        private readonly string[] docNames;
+        private readonly Dictionary<string, string> downloadMethods;
 
         // filled in when 保存 is pressed; null when the sheet was cancelled
         public AppSettings Result;
 
-        public SettingsDialog(AppSettings current)
+        public SettingsDialog(AppSettings current, string[] ids, string[] names)
         {
+            docIds = ids ?? new string[0];
+            docNames = names ?? new string[0];
+            downloadMethods = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < docIds.Length; i++)
+                downloadMethods[docIds[i]] = current.DocDownloadMethod(docIds[i]);
+
             Text = Lang.T("设置", "設定", "Settings", "設定");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -3211,7 +3326,7 @@ namespace RenPyDocs
             ShowInTaskbar = false;
             BackColor = Color.White;
             Font = Lang.UiFont(10F);
-            ClientSize = new Size(660, 649);
+            ClientSize = new Size(660, 773);
 
             Label title = new Label();
             title.Text = Text;
@@ -3220,7 +3335,7 @@ namespace RenPyDocs
             title.Location = new Point(34, 28);
             Controls.Add(title);
 
-            Section(Lang.T("系统语言设置", "系統語言設定",
+            Section(Lang.T("系统语言设置 (Language)", "系統語言設定 (Language)",
                            "Interface language", "表示言語"), 86);
             language = new ComboBox();
             language.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -3274,30 +3389,85 @@ namespace RenPyDocs
                 historyValue.Text = searchMax.Value.ToString();
             };
 
+            Section(Lang.T("文档下载方法", "文件下載方法",
+                           "Document download method",
+                           "文書のダウンロード方法"), 427);
+            Button configureDownloads = new Button();
+            configureDownloads.Text = Lang.T("点击配置", "點擊配置",
+                                             "Configure…", "設定…");
+            configureDownloads.Font = Lang.UiFont(10.5F);
+            configureDownloads.Size = new Size(160, 30);
+            configureDownloads.Location = new Point(36, 455);
+            configureDownloads.Click += delegate
+            {
+                using (DownloadMethodsDialog dlg = new DownloadMethodsDialog(
+                    downloadMethods, docIds, docNames))
+                {
+                    if (dlg.ShowDialog(this) == DialogResult.OK &&
+                        dlg.Methods != null)
+                    {
+                        downloadMethods.Clear();
+                        foreach (KeyValuePair<string, string> pair in dlg.Methods)
+                            downloadMethods[pair.Key] = pair.Value;
+                    }
+                }
+            };
+            Controls.Add(configureDownloads);
+
             Section(Lang.T("软件更新检查", "軟體更新檢查",
-                           "App updates", "アプリの更新確認"), 433);
+                           "App updates", "アプリの更新確認"), 513);
             appUrl = new TextBox();
             appUrl.Font = Lang.UiFont(11F);
             appUrl.Size = new Size(588, 30);
-            appUrl.Location = new Point(36, 461);
+            appUrl.Location = new Point(36, 541);
             appUrl.Text = current.AppUpdateUrl;
             Controls.Add(appUrl);
 
             appUpdate = Check(Lang.T("启动时检查软件更新", "啟動時檢查軟體更新",
                                      "Check for app updates at startup",
-                                     "起動時にアプリの更新を確認する"), 499);
+                                     "起動時にアプリの更新を確認する"), 579);
             appUpdate.Checked = current.AppUpdateOnStart;
             appDaily = Check(Lang.T("每天最多检查一次", "每天最多檢查一次",
                                     "Check at most once a day",
-                                    "チェックは 1 日 1 回まで"), 527);
+                                    "チェックは 1 日 1 回まで"), 607);
             appDaily.Checked = current.AppUpdateDaily;
+
+            Button appCheck = new Button();
+            appCheck.Text = Lang.T("检查更新", "檢查更新",
+                                   "Check now", "今すぐ確認");
+            appCheck.Font = Lang.UiFont(10.5F);
+            appCheck.Size = new Size(160, 30);
+            appCheck.Location = new Point(36, 643);
+            appCheck.Click += async delegate
+            {
+                if (!appCheck.Enabled) return;
+                appCheck.Enabled = false;
+                string oldText = appCheck.Text;
+                appCheck.Text = Lang.T("检查中…", "檢查中…",
+                                       "Checking…", "確認中…");
+                try
+                {
+                    Form appForm = Owner as Form;
+                    await AppUpdateUI.CheckAndShowAsync(
+                        this, true, appUrl.Text.Trim(), appForm);
+                }
+                finally
+                {
+                    if (!IsDisposed)
+                    {
+                        appCheck.Text = oldText;
+                        appCheck.Enabled = true;
+                    }
+                }
+            };
+            Controls.Add(appCheck);
 
             Button cancel = new Button();
             cancel.Text = Lang.T("取消", "取消", "Cancel", "キャンセル");
             cancel.Font = Lang.UiFont(11F);
             cancel.Size = new Size(124, 44);
             cancel.DialogResult = DialogResult.Cancel;
-            cancel.Location = new Point(ClientSize.Width - 316, 575);
+            cancel.Location = new Point(ClientSize.Width - 316, 699);
             Controls.Add(cancel);
 
             Button save = new Button();
@@ -3305,7 +3475,7 @@ namespace RenPyDocs
             save.Font = Lang.UiFont(11F);
             save.Size = new Size(124, 44);
             save.DialogResult = DialogResult.OK;
-            save.Location = new Point(ClientSize.Width - 172, 575);
+            save.Location = new Point(ClientSize.Width - 172, 699);
             save.Click += delegate { Result = Collect(); };
             Controls.Add(save);
 
@@ -3353,6 +3523,8 @@ namespace RenPyDocs
             s.AppUpdateUrl = appUrl.Text.Trim();
             s.SearchHistoryMax = searchMax.Value;
             s.ClearTabsOnExit = clearTabs.Checked;
+            foreach (KeyValuePair<string, string> pair in downloadMethods)
+                s.DocDownloadMethods[pair.Key] = pair.Value;
             return s;
         }
 
@@ -3361,6 +3533,134 @@ namespace RenPyDocs
             base.OnShown(e);
             // grey cue inside the empty URL box
             SendMessage(appUrl.Handle, 0x1501, (IntPtr)1, AppUpdater.DefaultUrl);
+        }
+    }
+
+    // Per-document download path picker: one row per document, two radio
+    // columns. The choices are held here until the main Settings sheet is saved.
+    public class DownloadMethodsDialog : Form
+    {
+        private readonly string[] ids;
+        private readonly Dictionary<string, RadioButton> python =
+            new Dictionary<string, RadioButton>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, RadioButton> browser =
+            new Dictionary<string, RadioButton>(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, string> Methods;
+
+        public DownloadMethodsDialog(Dictionary<string, string> current,
+                                     string[] docIds, string[] docNames)
+        {
+            ids = docIds ?? new string[0];
+
+            Text = Lang.T("文档下载方法", "文件下載方法",
+                          "Document download method",
+                          "文書のダウンロード方法");
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            StartPosition = FormStartPosition.CenterParent;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            BackColor = Color.White;
+            Font = Lang.UiFont(10F);
+
+            int rowTop = 88;
+            int rowHeight = 42;
+            int buttonsY = Math.Max(370, rowTop + ids.Length * rowHeight + 24);
+            ClientSize = new Size(660, buttonsY + 74);
+
+            Label title = new Label();
+            title.Text = Text;
+            title.Font = Lang.UiFont(18F, FontStyle.Bold);
+            title.AutoSize = true;
+            title.Location = new Point(34, 28);
+            Controls.Add(title);
+
+            for (int i = 0; i < ids.Length; i++)
+            {
+                string id = ids[i];
+                if (string.IsNullOrEmpty(id)) continue;
+                string name = (docNames != null && i < docNames.Length &&
+                               !string.IsNullOrEmpty(docNames[i]))
+                    ? docNames[i] : id;
+                int y = rowTop + i * rowHeight;
+
+                Label rowName = new Label();
+                rowName.Text = name;
+                rowName.Font = Lang.UiFont(11F);
+                rowName.AutoSize = false;
+                rowName.AutoEllipsis = true;
+                rowName.UseMnemonic = false;
+                rowName.TextAlign = ContentAlignment.MiddleLeft;
+                rowName.Size = new Size(300, 26);
+                rowName.Location = new Point(36, y + 8);
+                Controls.Add(rowName);
+
+                string method = null;
+                if (current != null) current.TryGetValue(id, out method);
+                bool useBrowser = string.Equals(method, "browser",
+                    StringComparison.OrdinalIgnoreCase);
+
+                RadioButton py = new RadioButton();
+                py.Text = Lang.T("独立 Python", "獨立 Python",
+                                 "Standalone Python", "独立 Python");
+                py.Font = Lang.UiFont(10.5F);
+                py.AutoSize = true;
+                py.Location = new Point(10, 4);
+                py.Checked = !useBrowser;
+
+                RadioButton br = new RadioButton();
+                br.Text = Lang.T("内嵌浏览器", "內嵌瀏覽器",
+                                 "Embedded browser", "内蔵ブラウザー");
+                br.Font = Lang.UiFont(10.5F);
+                br.AutoSize = true;
+                br.Location = new Point(150, 4);
+                br.Checked = useBrowser;
+
+                // one panel per row: WinForms groups radio buttons by their
+                // container, so each document gets its own pair
+                Panel choice = new Panel();
+                choice.Location = new Point(350, y + 3);
+                choice.Size = new Size(280, 30);
+                choice.BackColor = Color.White;
+                choice.Controls.Add(py);
+                choice.Controls.Add(br);
+                Controls.Add(choice);
+                python[id] = py;
+                browser[id] = br;
+            }
+
+            Button cancel = new Button();
+            cancel.Text = Lang.T("取消", "取消", "Cancel", "キャンセル");
+            cancel.Font = Lang.UiFont(11F);
+            cancel.Size = new Size(124, 44);
+            cancel.DialogResult = DialogResult.Cancel;
+            cancel.Location = new Point(ClientSize.Width - 316, buttonsY);
+            Controls.Add(cancel);
+
+            Button save = new Button();
+            save.Text = Lang.T("保存", "儲存", "Save", "保存");
+            save.Font = Lang.UiFont(11F);
+            save.Size = new Size(124, 44);
+            save.Location = new Point(ClientSize.Width - 172, buttonsY);
+            save.Click += delegate
+            {
+                Methods = new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < ids.Length; i++)
+                {
+                    string id = ids[i];
+                    if (string.IsNullOrEmpty(id)) continue;
+                    RadioButton br;
+                    Methods[id] = browser.TryGetValue(id, out br) && br.Checked
+                        ? "browser" : "python";
+                }
+                DialogResult = DialogResult.OK;
+            };
+            Controls.Add(save);
+
+            AcceptButton = save;
+            CancelButton = cancel;
         }
     }
 

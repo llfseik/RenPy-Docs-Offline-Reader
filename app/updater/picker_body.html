@@ -8,7 +8,9 @@
    只留屏幕正中一块「请选择文档」+ 文档列表 */
 .wy-nav-side,.wy-nav-top,.rst-footer-buttons,.rst-content>div[role="navigation"],
 .rp-disclaimer,footer,#rp-navbar,#rp-docs-fab,#rp-docs-panel,
-#rp-search-fab,#rp-favorites-fab,#rp-update-fab,#rp-settings-fab{display:none!important}
+#rp-search-fab,#rp-favorites-fab,#rp-update-fab{display:none!important}
+/* 空白页保留设置按钮，放在原来搜索按钮的位置（主题按钮上方） */
+body #rp-settings-fab{bottom:calc(1.4em + 2.2em + .55em)!important}
 .wy-nav-content-wrap{margin-left:0;background:transparent}
 .wy-nav-content{max-width:none;padding:0}
 .rst-content{margin:0;padding:0}

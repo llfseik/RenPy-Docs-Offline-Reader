@@ -289,15 +289,18 @@ namespace RenPyDocs
                          " docs.json updated=" + marked + "\r\n";
                 if (!removed || !folderGone || !marked) bad++;
 
+                Call(f, "DeleteTabsForDoc", "test-d");
+                lines += "tabs removed: " + !File.Exists(dfile) + " (expect True)\r\n";
+                if (File.Exists(dfile)) bad++;
+
                 string homeGone = HomeUrl(f);
                 lines += "home after delete: " + homeGone + "\r\n";
                 if (!homeGone.EndsWith("/picker.html")) bad++;
 
                 Call(f, "SetPickerTabs");
                 Call(f, "SaveTabs");
-                string kept = File.Exists(dfile) ? File.ReadAllText(dfile) : "";
-                lines += "saved tabs kept: " + kept.Contains("gui.html") + " (expect True)\r\n";
-                if (!kept.Contains("gui.html")) bad++;
+                lines += "picker did not recreate tabs: " + !File.Exists(dfile) + " (expect True)\r\n";
+                if (File.Exists(dfile)) bad++;
 
                 foreach (string id in new string[] { "test-d", "test-e" })
                 {
